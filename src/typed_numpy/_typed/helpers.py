@@ -47,187 +47,186 @@ ShapeND: TypeAlias = tuple[int, ...]
 """A tuple representing a ND shape, i.e., shape `(N, ...)`."""
 
 # DType aliases
-def_dtype: TypeAlias = np.double
-"""The default `dtype` used throughout, mostly."""
+DType = TypeVar("DType", bound=np.dtype, default=np.dtype, covariant=True)
 
 
 ## Array type aliases
 
 # Arrays based on dimensionality
-Array1D: TypeAlias = TypedNDArray[Shape1D[Dim1], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(N,)` with the default `dtype`."""
-Array2D: TypeAlias = TypedNDArray[Shape2D[Dim1, Dim2], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(M, N)` with the default `dtype`."""
-Array3D: TypeAlias = TypedNDArray[Shape3D[Dim1, Dim2, Dim3], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(L, M, N)` with the default `dtype`."""
-Array4D: TypeAlias = TypedNDArray[Shape4D[Dim1, Dim2, Dim3, Dim4], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(K, L, M, N)` with the default `dtype`."""
-ArrayND: TypeAlias = TypedNDArray[ShapeND, np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(N, ...)` with the default `dtype`."""
+Array1D: TypeAlias = TypedNDArray[Shape1D[Dim1], DType]
+"""A `numpy.ndarray` of shape `(N,)` and dtype `DType`."""
+Array2D: TypeAlias = TypedNDArray[Shape2D[Dim1, Dim2], DType]
+"""A `numpy.ndarray` of shape `(M, N)` and dtype `DType`."""
+Array3D: TypeAlias = TypedNDArray[Shape3D[Dim1, Dim2, Dim3], DType]
+"""A `numpy.ndarray` of shape `(L, M, N)` and dtype `DType`."""
+Array4D: TypeAlias = TypedNDArray[Shape4D[Dim1, Dim2, Dim3, Dim4], DType]
+"""A `numpy.ndarray` of shape `(K, L, M, N)` and dtype `DType`."""
+ArrayND: TypeAlias = TypedNDArray[ShapeND, DType]
+"""A `numpy.ndarray` of shape `(N, ...)` and dtype `DType`."""
 
 # 1D Arrays with specific small sizes
-Array2: TypeAlias = TypedNDArray[tuple[TWO], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(2,)` with the default `dtype`."""
-Array3: TypeAlias = TypedNDArray[tuple[THREE], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(3,)` with the default `dtype`."""
-Array4: TypeAlias = TypedNDArray[tuple[FOUR], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(4,)` with the default `dtype`."""
-ArrayN: TypeAlias = TypedNDArray[tuple[N], np.dtype[def_dtype]]  # Same as Array1D
-"""A `numpy.ndarray` of shape `(N,)` with the default `dtype`."""
+Array2: TypeAlias = TypedNDArray[tuple[TWO], DType]
+"""A `numpy.ndarray` of shape `(2,)` and dtype `DType`."""
+Array3: TypeAlias = TypedNDArray[tuple[THREE], DType]
+"""A `numpy.ndarray` of shape `(3,)` and dtype `DType`."""
+Array4: TypeAlias = TypedNDArray[tuple[FOUR], DType]
+"""A `numpy.ndarray` of shape `(4,)` and dtype `DType`."""
+ArrayN: TypeAlias = TypedNDArray[tuple[N], DType]  # Same as Array1D
+"""A `numpy.ndarray` of shape `(N,)` and dtype `DType`."""
 
 # 2D Arrays with specific small sizes
-Array2x2: TypeAlias = TypedNDArray[tuple[TWO, TWO], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(2, 2)` with the default `dtype`."""
-Array2x3: TypeAlias = TypedNDArray[tuple[TWO, THREE], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(2, 3)` with the default `dtype`."""
-Array2x4: TypeAlias = TypedNDArray[tuple[TWO, FOUR], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(2, 4)` with the default `dtype`."""
-Array2xN: TypeAlias = TypedNDArray[tuple[TWO, N], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(2, N)` with the default `dtype`."""
+Array2x2: TypeAlias = TypedNDArray[tuple[TWO, TWO], DType]
+"""A `numpy.ndarray` of shape `(2, 2)` and dtype `DType`."""
+Array2x3: TypeAlias = TypedNDArray[tuple[TWO, THREE], DType]
+"""A `numpy.ndarray` of shape `(2, 3)` and dtype `DType`."""
+Array2x4: TypeAlias = TypedNDArray[tuple[TWO, FOUR], DType]
+"""A `numpy.ndarray` of shape `(2, 4)` and dtype `DType`."""
+Array2xN: TypeAlias = TypedNDArray[tuple[TWO, N], DType]
+"""A `numpy.ndarray` of shape `(2, N)` and dtype `DType`."""
 
-Array3x2: TypeAlias = TypedNDArray[tuple[THREE, TWO], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(3, 2)` with the default `dtype`."""
-Array3x3: TypeAlias = TypedNDArray[tuple[THREE, THREE], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(3, 3)` with the default `dtype`."""
-Array3x4: TypeAlias = TypedNDArray[tuple[THREE, FOUR], np.dtype[def_dtype]]
+Array3x2: TypeAlias = TypedNDArray[tuple[THREE, TWO], DType]
+"""A `numpy.ndarray` of shape `(3, 2)` and dtype `DType`."""
+Array3x3: TypeAlias = TypedNDArray[tuple[THREE, THREE], DType]
+"""A `numpy.ndarray` of shape `(3, 3)` and dtype `DType`."""
+Array3x4: TypeAlias = TypedNDArray[tuple[THREE, FOUR], DType]
 """A `numpy.ndarray` of shape `(3, 4)` with the default `dtype."""
-Array3xN: TypeAlias = TypedNDArray[tuple[THREE, N], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(3, N)` with the default `dtype`."""
+Array3xN: TypeAlias = TypedNDArray[tuple[THREE, N], DType]
+"""A `numpy.ndarray` of shape `(3, N)` and dtype `DType`."""
 
-Array4x2: TypeAlias = TypedNDArray[tuple[FOUR, TWO], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(4, 2)` with the default `dtype`."""
-Array4x3: TypeAlias = TypedNDArray[tuple[FOUR, THREE], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(4, 3)` with the default `dtype`."""
-Array4x4: TypeAlias = TypedNDArray[tuple[FOUR, FOUR], np.dtype[def_dtype]]
+Array4x2: TypeAlias = TypedNDArray[tuple[FOUR, TWO], DType]
+"""A `numpy.ndarray` of shape `(4, 2)` and dtype `DType`."""
+Array4x3: TypeAlias = TypedNDArray[tuple[FOUR, THREE], DType]
+"""A `numpy.ndarray` of shape `(4, 3)` and dtype `DType`."""
+Array4x4: TypeAlias = TypedNDArray[tuple[FOUR, FOUR], DType]
 """A `numpy.ndarray` of shape `(4, 4)` with the default `dtype."""
-Array4xN: TypeAlias = TypedNDArray[tuple[FOUR, N], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(4, N)` with the default `dtype`."""
+Array4xN: TypeAlias = TypedNDArray[tuple[FOUR, N], DType]
+"""A `numpy.ndarray` of shape `(4, N)` and dtype `DType`."""
 
-ArrayNx2: TypeAlias = TypedNDArray[tuple[N, TWO], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(N, 2)` with the default `dtype`."""
-ArrayNx3: TypeAlias = TypedNDArray[tuple[N, THREE], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(N, 3)` with the default `dtype`."""
-ArrayNx4: TypeAlias = TypedNDArray[tuple[N, FOUR], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(N, 4)` with the default `dtype`."""
+ArrayNx2: TypeAlias = TypedNDArray[tuple[N, TWO], DType]
+"""A `numpy.ndarray` of shape `(N, 2)` and dtype `DType`."""
+ArrayNx3: TypeAlias = TypedNDArray[tuple[N, THREE], DType]
+"""A `numpy.ndarray` of shape `(N, 3)` and dtype `DType`."""
+ArrayNx4: TypeAlias = TypedNDArray[tuple[N, FOUR], DType]
+"""A `numpy.ndarray` of shape `(N, 4)` and dtype `DType`."""
 
 # 3D Arrays with specific small sizes
-Array2x2x2: TypeAlias = TypedNDArray[tuple[TWO, TWO, TWO], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(2, 2, 2)` with the default `dtype`."""
-Array2x2x3: TypeAlias = TypedNDArray[tuple[TWO, TWO, THREE], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(2, 2, 3)` with the default `dtype`."""
-Array2x2x4: TypeAlias = TypedNDArray[tuple[TWO, TWO, FOUR], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(2, 2, 4)` with the default `dtype`."""
-Array2x2xN: TypeAlias = TypedNDArray[tuple[TWO, TWO, N], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(2, 2, N)` with the default `dtype`."""
+Array2x2x2: TypeAlias = TypedNDArray[tuple[TWO, TWO, TWO], DType]
+"""A `numpy.ndarray` of shape `(2, 2, 2)` and dtype `DType`."""
+Array2x2x3: TypeAlias = TypedNDArray[tuple[TWO, TWO, THREE], DType]
+"""A `numpy.ndarray` of shape `(2, 2, 3)` and dtype `DType`."""
+Array2x2x4: TypeAlias = TypedNDArray[tuple[TWO, TWO, FOUR], DType]
+"""A `numpy.ndarray` of shape `(2, 2, 4)` and dtype `DType`."""
+Array2x2xN: TypeAlias = TypedNDArray[tuple[TWO, TWO, N], DType]
+"""A `numpy.ndarray` of shape `(2, 2, N)` and dtype `DType`."""
 
-Array2x3x2: TypeAlias = TypedNDArray[tuple[TWO, THREE, TWO], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(2, 3, 2)` with the default `dtype`."""
-Array2x3x3: TypeAlias = TypedNDArray[tuple[TWO, THREE, THREE], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(2, 3, 3)` with the default `dtype`."""
-Array2x3x4: TypeAlias = TypedNDArray[tuple[TWO, THREE, FOUR], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(2, 3, 4)` with the default `dtype`."""
-Array2x3xN: TypeAlias = TypedNDArray[tuple[TWO, THREE, N], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(2, 3, N)` with the default `dtype`."""
+Array2x3x2: TypeAlias = TypedNDArray[tuple[TWO, THREE, TWO], DType]
+"""A `numpy.ndarray` of shape `(2, 3, 2)` and dtype `DType`."""
+Array2x3x3: TypeAlias = TypedNDArray[tuple[TWO, THREE, THREE], DType]
+"""A `numpy.ndarray` of shape `(2, 3, 3)` and dtype `DType`."""
+Array2x3x4: TypeAlias = TypedNDArray[tuple[TWO, THREE, FOUR], DType]
+"""A `numpy.ndarray` of shape `(2, 3, 4)` and dtype `DType`."""
+Array2x3xN: TypeAlias = TypedNDArray[tuple[TWO, THREE, N], DType]
+"""A `numpy.ndarray` of shape `(2, 3, N)` and dtype `DType`."""
 
-Array2x4x2: TypeAlias = TypedNDArray[tuple[TWO, FOUR, TWO], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(2, 4, 2)` with the default `dtype`."""
-Array2x4x3: TypeAlias = TypedNDArray[tuple[TWO, FOUR, THREE], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(2, 4, 3)` with the default `dtype`."""
-Array2x4x4: TypeAlias = TypedNDArray[tuple[TWO, FOUR, FOUR], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(2, 4, 4)` with the default `dtype`."""
-Array2x4xN: TypeAlias = TypedNDArray[tuple[TWO, FOUR, N], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(2, 4, N)` with the default `dtype`."""
+Array2x4x2: TypeAlias = TypedNDArray[tuple[TWO, FOUR, TWO], DType]
+"""A `numpy.ndarray` of shape `(2, 4, 2)` and dtype `DType`."""
+Array2x4x3: TypeAlias = TypedNDArray[tuple[TWO, FOUR, THREE], DType]
+"""A `numpy.ndarray` of shape `(2, 4, 3)` and dtype `DType`."""
+Array2x4x4: TypeAlias = TypedNDArray[tuple[TWO, FOUR, FOUR], DType]
+"""A `numpy.ndarray` of shape `(2, 4, 4)` and dtype `DType`."""
+Array2x4xN: TypeAlias = TypedNDArray[tuple[TWO, FOUR, N], DType]
+"""A `numpy.ndarray` of shape `(2, 4, N)` and dtype `DType`."""
 
-Array2xNx2: TypeAlias = TypedNDArray[tuple[TWO, N, TWO], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(2, N, 2)` with the default `dtype`."""
-Array2xNx3: TypeAlias = TypedNDArray[tuple[TWO, N, THREE], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(2, N, 3)` with the default `dtype`."""
-Array2xNx4: TypeAlias = TypedNDArray[tuple[TWO, N, FOUR], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(2, N, 4)` with the default `dtype`."""
+Array2xNx2: TypeAlias = TypedNDArray[tuple[TWO, N, TWO], DType]
+"""A `numpy.ndarray` of shape `(2, N, 2)` and dtype `DType`."""
+Array2xNx3: TypeAlias = TypedNDArray[tuple[TWO, N, THREE], DType]
+"""A `numpy.ndarray` of shape `(2, N, 3)` and dtype `DType`."""
+Array2xNx4: TypeAlias = TypedNDArray[tuple[TWO, N, FOUR], DType]
+"""A `numpy.ndarray` of shape `(2, N, 4)` and dtype `DType`."""
 
-Array3x2x2: TypeAlias = TypedNDArray[tuple[THREE, TWO, TWO], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(3, 2, 2)` with the default `dtype`."""
-Array3x2x3: TypeAlias = TypedNDArray[tuple[THREE, TWO, THREE], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(3, 2, 3)` with the default `dtype`."""
-Array3x2x4: TypeAlias = TypedNDArray[tuple[THREE, TWO, FOUR], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(3, 2, 4)` with the default `dtype`."""
-Array3x2xN: TypeAlias = TypedNDArray[tuple[THREE, TWO, N], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(3, 2, N)` with the default `dtype`."""
+Array3x2x2: TypeAlias = TypedNDArray[tuple[THREE, TWO, TWO], DType]
+"""A `numpy.ndarray` of shape `(3, 2, 2)` and dtype `DType`."""
+Array3x2x3: TypeAlias = TypedNDArray[tuple[THREE, TWO, THREE], DType]
+"""A `numpy.ndarray` of shape `(3, 2, 3)` and dtype `DType`."""
+Array3x2x4: TypeAlias = TypedNDArray[tuple[THREE, TWO, FOUR], DType]
+"""A `numpy.ndarray` of shape `(3, 2, 4)` and dtype `DType`."""
+Array3x2xN: TypeAlias = TypedNDArray[tuple[THREE, TWO, N], DType]
+"""A `numpy.ndarray` of shape `(3, 2, N)` and dtype `DType`."""
 
-Array3x3x2: TypeAlias = TypedNDArray[tuple[THREE, THREE, TWO], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(3, 3, 2)` with the default `dtype`."""
-Array3x3x3: TypeAlias = TypedNDArray[tuple[THREE, THREE, THREE], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(3, 3, 3)` with the default `dtype`."""
-Array3x3x4: TypeAlias = TypedNDArray[tuple[THREE, THREE, FOUR], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(3, 3, 4)` with the default `dtype`."""
-Array3x3xN: TypeAlias = TypedNDArray[tuple[THREE, THREE, N], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(3, 3, N)` with the default `dtype`."""
+Array3x3x2: TypeAlias = TypedNDArray[tuple[THREE, THREE, TWO], DType]
+"""A `numpy.ndarray` of shape `(3, 3, 2)` and dtype `DType`."""
+Array3x3x3: TypeAlias = TypedNDArray[tuple[THREE, THREE, THREE], DType]
+"""A `numpy.ndarray` of shape `(3, 3, 3)` and dtype `DType`."""
+Array3x3x4: TypeAlias = TypedNDArray[tuple[THREE, THREE, FOUR], DType]
+"""A `numpy.ndarray` of shape `(3, 3, 4)` and dtype `DType`."""
+Array3x3xN: TypeAlias = TypedNDArray[tuple[THREE, THREE, N], DType]
+"""A `numpy.ndarray` of shape `(3, 3, N)` and dtype `DType`."""
 
-Array3x4x2: TypeAlias = TypedNDArray[tuple[THREE, FOUR, TWO], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(3, 4, 2)` with the default `dtype`."""
-Array3x4x3: TypeAlias = TypedNDArray[tuple[THREE, FOUR, THREE], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(3, 4, 3)` with the default `dtype`."""
-Array3x4x4: TypeAlias = TypedNDArray[tuple[THREE, FOUR, FOUR], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(3, 4, 4)` with the default `dtype`."""
-Array3x4xN: TypeAlias = TypedNDArray[tuple[THREE, FOUR, N], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(3, 4, N)` with the default `dtype`."""
+Array3x4x2: TypeAlias = TypedNDArray[tuple[THREE, FOUR, TWO], DType]
+"""A `numpy.ndarray` of shape `(3, 4, 2)` and dtype `DType`."""
+Array3x4x3: TypeAlias = TypedNDArray[tuple[THREE, FOUR, THREE], DType]
+"""A `numpy.ndarray` of shape `(3, 4, 3)` and dtype `DType`."""
+Array3x4x4: TypeAlias = TypedNDArray[tuple[THREE, FOUR, FOUR], DType]
+"""A `numpy.ndarray` of shape `(3, 4, 4)` and dtype `DType`."""
+Array3x4xN: TypeAlias = TypedNDArray[tuple[THREE, FOUR, N], DType]
+"""A `numpy.ndarray` of shape `(3, 4, N)` and dtype `DType`."""
 
-Array3xNx2: TypeAlias = TypedNDArray[tuple[THREE, N, TWO], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(3, N, 2)` with the default `dtype`."""
-Array3xNx3: TypeAlias = TypedNDArray[tuple[THREE, N, THREE], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(3, N, 3)` with the default `dtype`."""
-Array3xNx4: TypeAlias = TypedNDArray[tuple[THREE, N, FOUR], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(3, N, 4)` with the default `dtype`."""
+Array3xNx2: TypeAlias = TypedNDArray[tuple[THREE, N, TWO], DType]
+"""A `numpy.ndarray` of shape `(3, N, 2)` and dtype `DType`."""
+Array3xNx3: TypeAlias = TypedNDArray[tuple[THREE, N, THREE], DType]
+"""A `numpy.ndarray` of shape `(3, N, 3)` and dtype `DType`."""
+Array3xNx4: TypeAlias = TypedNDArray[tuple[THREE, N, FOUR], DType]
+"""A `numpy.ndarray` of shape `(3, N, 4)` and dtype `DType`."""
 
-Array4x2x2: TypeAlias = TypedNDArray[tuple[FOUR, TWO, TWO], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(4, 2, 2)` with the default `dtype`."""
-Array4x2x3: TypeAlias = TypedNDArray[tuple[FOUR, TWO, THREE], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(4, 2, 3)` with the default `dtype`."""
-Array4x2x4: TypeAlias = TypedNDArray[tuple[FOUR, TWO, FOUR], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(4, 2, 4)` with the default `dtype`."""
-Array4x2xN: TypeAlias = TypedNDArray[tuple[FOUR, TWO, N], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(4, 2, N)` with the default `dtype`."""
+Array4x2x2: TypeAlias = TypedNDArray[tuple[FOUR, TWO, TWO], DType]
+"""A `numpy.ndarray` of shape `(4, 2, 2)` and dtype `DType`."""
+Array4x2x3: TypeAlias = TypedNDArray[tuple[FOUR, TWO, THREE], DType]
+"""A `numpy.ndarray` of shape `(4, 2, 3)` and dtype `DType`."""
+Array4x2x4: TypeAlias = TypedNDArray[tuple[FOUR, TWO, FOUR], DType]
+"""A `numpy.ndarray` of shape `(4, 2, 4)` and dtype `DType`."""
+Array4x2xN: TypeAlias = TypedNDArray[tuple[FOUR, TWO, N], DType]
+"""A `numpy.ndarray` of shape `(4, 2, N)` and dtype `DType`."""
 
-Array4x3x2: TypeAlias = TypedNDArray[tuple[FOUR, THREE, TWO], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(4, 3, 2)` with the default `dtype`."""
-Array4x3x3: TypeAlias = TypedNDArray[tuple[FOUR, THREE, THREE], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(4, 3, 3)` with the default `dtype`."""
-Array4x3x4: TypeAlias = TypedNDArray[tuple[FOUR, THREE, FOUR], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(4, 3, 4)` with the default `dtype`."""
-Array4x3xN: TypeAlias = TypedNDArray[tuple[FOUR, THREE, N], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(4, 3, N)` with the default `dtype`."""
+Array4x3x2: TypeAlias = TypedNDArray[tuple[FOUR, THREE, TWO], DType]
+"""A `numpy.ndarray` of shape `(4, 3, 2)` and dtype `DType`."""
+Array4x3x3: TypeAlias = TypedNDArray[tuple[FOUR, THREE, THREE], DType]
+"""A `numpy.ndarray` of shape `(4, 3, 3)` and dtype `DType`."""
+Array4x3x4: TypeAlias = TypedNDArray[tuple[FOUR, THREE, FOUR], DType]
+"""A `numpy.ndarray` of shape `(4, 3, 4)` and dtype `DType`."""
+Array4x3xN: TypeAlias = TypedNDArray[tuple[FOUR, THREE, N], DType]
+"""A `numpy.ndarray` of shape `(4, 3, N)` and dtype `DType`."""
 
-Array4x4x2: TypeAlias = TypedNDArray[tuple[FOUR, FOUR, TWO], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(4, 4, 2)` with the default `dtype`."""
-Array4x4x3: TypeAlias = TypedNDArray[tuple[FOUR, FOUR, THREE], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(4, 4, 3)` with the default `dtype`."""
-Array4x4x4: TypeAlias = TypedNDArray[tuple[FOUR, FOUR, FOUR], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(4, 4, 4)` with the default `dtype`."""
-Array4x4xN: TypeAlias = TypedNDArray[tuple[FOUR, FOUR, N], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(4, 4, N)` with the default `dtype`."""
+Array4x4x2: TypeAlias = TypedNDArray[tuple[FOUR, FOUR, TWO], DType]
+"""A `numpy.ndarray` of shape `(4, 4, 2)` and dtype `DType`."""
+Array4x4x3: TypeAlias = TypedNDArray[tuple[FOUR, FOUR, THREE], DType]
+"""A `numpy.ndarray` of shape `(4, 4, 3)` and dtype `DType`."""
+Array4x4x4: TypeAlias = TypedNDArray[tuple[FOUR, FOUR, FOUR], DType]
+"""A `numpy.ndarray` of shape `(4, 4, 4)` and dtype `DType`."""
+Array4x4xN: TypeAlias = TypedNDArray[tuple[FOUR, FOUR, N], DType]
+"""A `numpy.ndarray` of shape `(4, 4, N)` and dtype `DType`."""
 
-Array4xNx2: TypeAlias = TypedNDArray[tuple[FOUR, N, TWO], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(4, N, 2)` with the default `dtype`."""
-Array4xNx3: TypeAlias = TypedNDArray[tuple[FOUR, N, THREE], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(4, N, 3)` with the default `dtype`."""
-Array4xNx4: TypeAlias = TypedNDArray[tuple[FOUR, N, FOUR], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(4, N, 4)` with the default `dtype`."""
+Array4xNx2: TypeAlias = TypedNDArray[tuple[FOUR, N, TWO], DType]
+"""A `numpy.ndarray` of shape `(4, N, 2)` and dtype `DType`."""
+Array4xNx3: TypeAlias = TypedNDArray[tuple[FOUR, N, THREE], DType]
+"""A `numpy.ndarray` of shape `(4, N, 3)` and dtype `DType`."""
+Array4xNx4: TypeAlias = TypedNDArray[tuple[FOUR, N, FOUR], DType]
+"""A `numpy.ndarray` of shape `(4, N, 4)` and dtype `DType`."""
 
-ArrayNx2x2: TypeAlias = TypedNDArray[tuple[N, TWO, TWO], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(N, 2, 2)` with the default `dtype`."""
-ArrayNx2x3: TypeAlias = TypedNDArray[tuple[N, TWO, THREE], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(N, 2, 3)` with the default `dtype`."""
-ArrayNx2x4: TypeAlias = TypedNDArray[tuple[N, TWO, FOUR], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(N, 2, 4)` with the default `dtype`."""
-ArrayNx3x2: TypeAlias = TypedNDArray[tuple[N, THREE, TWO], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(N, 3, 2)` with the default `dtype`."""
-ArrayNx3x3: TypeAlias = TypedNDArray[tuple[N, THREE, THREE], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(N, 3, 3)` with the default `dtype`."""
-ArrayNx3x4: TypeAlias = TypedNDArray[tuple[N, THREE, FOUR], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(N, 3, 4)` with the default `dtype`."""
-ArrayNx4x2: TypeAlias = TypedNDArray[tuple[N, FOUR, TWO], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(N, 4, 2)` with the default `dtype`."""
-ArrayNx4x3: TypeAlias = TypedNDArray[tuple[N, FOUR, THREE], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(N, 4, 3)` with the default `dtype`."""
-ArrayNx4x4: TypeAlias = TypedNDArray[tuple[N, FOUR, FOUR], np.dtype[def_dtype]]
-"""A `numpy.ndarray` of shape `(N, 4, 4)` with the default `dtype`."""
+ArrayNx2x2: TypeAlias = TypedNDArray[tuple[N, TWO, TWO], DType]
+"""A `numpy.ndarray` of shape `(N, 2, 2)` and dtype `DType`."""
+ArrayNx2x3: TypeAlias = TypedNDArray[tuple[N, TWO, THREE], DType]
+"""A `numpy.ndarray` of shape `(N, 2, 3)` and dtype `DType`."""
+ArrayNx2x4: TypeAlias = TypedNDArray[tuple[N, TWO, FOUR], DType]
+"""A `numpy.ndarray` of shape `(N, 2, 4)` and dtype `DType`."""
+ArrayNx3x2: TypeAlias = TypedNDArray[tuple[N, THREE, TWO], DType]
+"""A `numpy.ndarray` of shape `(N, 3, 2)` and dtype `DType`."""
+ArrayNx3x3: TypeAlias = TypedNDArray[tuple[N, THREE, THREE], DType]
+"""A `numpy.ndarray` of shape `(N, 3, 3)` and dtype `DType`."""
+ArrayNx3x4: TypeAlias = TypedNDArray[tuple[N, THREE, FOUR], DType]
+"""A `numpy.ndarray` of shape `(N, 3, 4)` and dtype `DType`."""
+ArrayNx4x2: TypeAlias = TypedNDArray[tuple[N, FOUR, TWO], DType]
+"""A `numpy.ndarray` of shape `(N, 4, 2)` and dtype `DType`."""
+ArrayNx4x3: TypeAlias = TypedNDArray[tuple[N, FOUR, THREE], DType]
+"""A `numpy.ndarray` of shape `(N, 4, 3)` and dtype `DType`."""
+ArrayNx4x4: TypeAlias = TypedNDArray[tuple[N, FOUR, FOUR], DType]
+"""A `numpy.ndarray` of shape `(N, 4, 4)` and dtype `DType`."""
