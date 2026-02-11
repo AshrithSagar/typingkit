@@ -5,7 +5,17 @@ NDArray
 # src/typed_numpy/_typed/ndarray.py
 
 from types import GenericAlias
-from typing import Any, Literal, TypeAlias, TypeVar, get_args, get_origin
+from typing import (
+    Any,
+    Iterator,
+    Literal,
+    TypeAlias,
+    TypeVar,
+    TypeVarTuple,
+    get_args,
+    get_origin,
+    overload,
+)
 
 import numpy as np
 import numpy.typing as npt
@@ -17,6 +27,7 @@ _AcceptedDim: TypeAlias = int | TypeVar | None
 _AcceptedShape: TypeAlias = tuple[_AcceptedDim, ...]
 _RuntimeDim: TypeAlias = int | None
 _RuntimeShape: TypeAlias = tuple[_RuntimeDim, ...]
+_ShapeRest = TypeVarTuple("_ShapeRest")
 
 # `numpy` privates
 _Shape: TypeAlias = tuple[Any, ...]  # Weakened type reduction
@@ -24,6 +35,8 @@ _AnyShape: TypeAlias = tuple[_AcceptedDim, ...]  # Stronger type promotion
 
 _ShapeT_co = TypeVar("_ShapeT_co", bound=_Shape, default=_AnyShape, covariant=True)
 _DTypeT_co = TypeVar("_DTypeT_co", bound=np.dtype, default=np.dtype, covariant=True)
+
+_ScalarT_co = TypeVar("_ScalarT_co", bound=np.generic, default=Any, covariant=True)
 
 
 ## Exceptions
@@ -205,6 +218,20 @@ class TypedNDArray(np.ndarray[_ShapeT_co, _DTypeT_co]):
 
     def __repr__(self) -> str:
         return str(np.asarray(self).__repr__())
+
+    @overload  # == 1D
+    def __iter__(
+        self: "TypedNDArray[tuple[int], np.dtype[_ScalarT_co]]",
+    ) -> Iterator[_ScalarT_co]: ...
+    @overload  # >= 1D
+    def __iter__(
+        self: "TypedNDArray[tuple[int, *_ShapeRest], _DTypeT_co]",
+    ) -> Iterator["TypedNDArray[tuple[*_ShapeRest], _DTypeT_co]"]: ...
+    @overload  # ?-d
+    def __iter__(self, /) -> Iterator[Any]: ...
+    #
+    def __iter__(self, /) -> Iterator[Any]:
+        return super().__iter__()
 
 
 ## Deferred shape binding
