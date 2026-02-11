@@ -271,9 +271,12 @@ class _NDShape:
         should_validate = self.validate or not any(
             isinstance(dim, TypeVar) for dim in self.shape_spec
         )
+        dtype_spec = (
+            get_args(self.dtype_spec)[0] if self.dtype_spec is not Any else None
+        )
         return self.base(
             arr,
-            dtype=dtype,
+            dtype=dtype or dtype_spec,
             shape=shape,
             shape_spec=self.shape_spec if should_validate else None,
         )
