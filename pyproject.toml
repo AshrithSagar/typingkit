@@ -8,13 +8,13 @@ requires-python = ">=3.13"
 dependencies = ["numpy>=2.2"]
 
 [build-system]
-requires = ["uv_build>=0.9.22,<0.10.0"]
+requires = ["uv_build>=0.10.2"]
 build-backend = "uv_build"
 
 [dependency-groups]
 test = ["pytest>=9.0.2", "pytest-memray>=1.8.0"]
-lint = ["ruff>=0.14.11"]
-typecheck = ["basedpyright>=1.37.1", "mypy>=1.19.1", "pyright>=1.1.408"]
+lint = ["ruff>=0.15.1"]
+typecheck = ["basedpyright>=1.38.0", "mypy>=1.19.1", "pyright>=1.1.408"]
 
 [tool.uv]
 default-groups = "all"
