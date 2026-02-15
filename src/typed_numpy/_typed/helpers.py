@@ -35,6 +35,8 @@ M = TypeVar("M", bound=int, default=int)
 N = TypeVar("N", bound=int, default=int)
 
 # Shape type aliases
+Shape0D: TypeAlias = tuple[()]
+"""A tuple representing a 0D shape, i.e., `()`."""
 Shape1D: TypeAlias = tuple[Dim1]
 """A tuple representing a 1D shape, i.e., `(N,)`."""
 Shape2D: TypeAlias = tuple[Dim1, Dim2]
@@ -53,6 +55,8 @@ DType = TypeVar("DType", bound=np.dtype, default=np.dtype, covariant=True)
 ## Array type aliases
 
 # Arrays based on dimensionality
+Array0D: TypeAlias = TypedNDArray[Shape0D, DType]
+"""A `numpy.ndarray` of shape `()` and dtype `DType`."""
 Array1D: TypeAlias = TypedNDArray[Shape1D[Dim1], DType]
 """A `numpy.ndarray` of shape `(N,)` and dtype `DType`."""
 Array2D: TypeAlias = TypedNDArray[Shape2D[Dim1, Dim2], DType]
