@@ -142,6 +142,55 @@ class TestNDShapeDeferredBinding:
             ArrayN[2, 3]  # type: ignore
 
 
+class TestVariadicShapes:
+    """Tests for tuple[X, ...] variadic shape handling."""
+
+    def test_variadic_int_allows_any_rank(self) -> None:
+        ArrayAnyRank = TypedNDArray[tuple[int, ...]]
+
+        arr1 = ArrayAnyRank([1, 2, 3])
+        assert arr1.shape == (3,)
+
+        arr2 = ArrayAnyRank([[1, 2], [3, 4]])
+        assert arr2.shape == (2, 2)
+
+        arr3 = ArrayAnyRank(np.ones((2, 3, 4)))
+        assert arr3.shape == (2, 3, 4)
+
+    def test_variadic_literal_enforces_each_dimension(self) -> None:
+        ArrayAllTwo = TypedNDArray[tuple[TWO, ...]]
+
+        arr = ArrayAllTwo([[1, 2], [3, 4]])
+        assert arr.shape == (2, 2)
+
+        with pytest.raises(ShapeError):
+            ArrayAllTwo([1, 2, 3])  # (3,) => should fail
+
+        with pytest.raises(ShapeError):
+            ArrayAllTwo([[1, 2], [3, 4], [5, 6]])  # (3, 2) => should fail
+
+    def test_variadic_typevar_binds_consistently(self) -> None:
+        ArrayNAll = TypedNDArray[tuple[N, ...]]
+
+        arr = ArrayNAll([[1, 2], [3, 4]])
+        assert arr.shape == (2, 2)
+
+        with pytest.raises(ShapeError):
+            ArrayNAll(np.ones((2, 3)))  # Inconsistent dimensions
+
+    def test_variadic_zero_dim_array(self) -> None:
+        ArrayAnyRank = TypedNDArray[tuple[int, ...]]
+        arr = ArrayAnyRank(5)
+        assert arr.shape == ()
+
+    def test_variadic_with_dtype(self) -> None:
+        ArrayAllTwoFloat = TypedNDArray[tuple[TWO, ...], np.dtype[np.float32]]
+
+        arr = ArrayAllTwoFloat([[1.0, 2.0], [3.0, 4.0]])
+        assert arr.shape == (2, 2)
+        assert arr.dtype == np.float32
+
+
 class TestRepr:
     """Tests for string representation."""
 
