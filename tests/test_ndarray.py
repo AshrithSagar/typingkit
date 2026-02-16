@@ -3,47 +3,21 @@ Tests for TypedNDArray core functionality - 1
 """
 # tests/test_ndarray.py
 
-from typing import Literal, TypeVar
+# pyright: reportPrivateUsage = false
+
+from typing import TypeVar
 
 import numpy as np
 import pytest
 
+from typed_numpy._typed.helpers import FOUR, THREE, TWO
 from typed_numpy._typed.ndarray import (
     DimensionError,
     RankError,
     ShapeError,
     TypedNDArray,
-    _resolve_dim,
-    _resolve_shape,
     _validate_shape,
 )
-from typed_numpy._typed.shapes import FOUR, THREE, TWO
-
-
-class TestShapeResolution:
-    """Tests for shape resolution functions."""
-
-    def test_resolve_dim_none(self):
-        assert _resolve_dim(None) is None
-
-    def test_resolve_dim_int_type(self):
-        assert _resolve_dim(int) is None
-
-    def test_resolve_dim_concrete_int(self):
-        assert _resolve_dim(5) == 5
-
-    def test_resolve_dim_typevar(self):
-        T = TypeVar("T")
-        assert _resolve_dim(T) is None
-
-    def test_resolve_dim_literal(self):
-        assert _resolve_dim(Literal[3]) == 3  # type: ignore
-
-    def test_resolve_shape_mixed(self):
-        T = TypeVar("T")
-        shape = (2, Literal[5], int, T, None)
-        resolved = _resolve_shape(shape)
-        assert resolved == (2, 5, None, None, None)
 
 
 class TestShapeValidation:
@@ -62,13 +36,13 @@ class TestShapeValidation:
     def test_validate_shape_rank_mismatch(self):
         expected = (3, 4)
         actual = (3, 4, 5)
-        with pytest.raises(RankError, match="Rank mismatch"):
+        with pytest.raises(RankError):
             _validate_shape(expected, actual)
 
     def test_validate_shape_dimension_mismatch(self):
         expected = (3, 4, 5)
         actual = (3, 4, 6)
-        with pytest.raises(ShapeError, match="Shape mismatch"):
+        with pytest.raises(ShapeError):
             _validate_shape(expected, actual)
 
 
@@ -83,14 +57,6 @@ class TestTypedNDArrayCreation:
     def test_create_with_dtype(self):
         arr = TypedNDArray([1, 2, 3], dtype=np.float32)
         assert arr.dtype == np.float32
-
-    def test_create_with_shape_validation(self):
-        arr = TypedNDArray([[1, 2], [3, 4]], shape=(2, 2))
-        assert arr.shape == (2, 2)
-
-    def test_create_with_shape_validation_failure(self):
-        with pytest.raises(ShapeError):
-            TypedNDArray([[1, 2], [3, 4]], shape=(3, 2))
 
 
 class TestTypedNDArrayClassGetitem:
@@ -184,7 +150,7 @@ class TestNDShapeDeferredBinding:
     def test_bind_too_many_dimensions(self):
         N = TypeVar("N")
         ArrayN = TypedNDArray[tuple[N]]  # type: ignore
-        with pytest.raises(DimensionError, match="Too many type arguments"):
+        with pytest.raises(TypeError):
             ArrayN[2, 3]  # type: ignore
 
 

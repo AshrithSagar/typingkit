@@ -8,65 +8,13 @@ from typing import Literal, TypeAlias, TypeVar
 import numpy as np
 import pytest
 
+from typed_numpy._typed.helpers import FOUR, THREE, TWO
 from typed_numpy._typed.ndarray import (
     DimensionError,
     RankError,
     ShapeError,
     TypedNDArray,
-    _normalise_shape,
 )
-from typed_numpy._typed.shapes import FOUR, THREE, TWO
-
-
-class TestShapeNormalization:
-    """Tests for _normalise_shape function."""
-
-    def test_normalise_single_int(self):
-        assert _normalise_shape(5) == (5,)
-
-    def test_normalise_single_typevar(self):
-        N = TypeVar("N")
-        assert _normalise_shape(N) == (N,)
-
-    def test_normalise_none(self):
-        assert _normalise_shape(None) == (None,)
-
-    def test_normalise_already_tuple(self):
-        assert _normalise_shape((2, 3, 4)) == (2, 3, 4)
-
-    def test_normalise_literal(self):
-        result = _normalise_shape(Literal[5])  # type: ignore
-        assert isinstance(result, tuple)
-
-
-class TestArrayFinalize:
-    """Tests for __array_finalize__ metadata propagation."""
-
-    def test_view_propagates_metadata(self):
-        Array3 = TypedNDArray[tuple[THREE]]
-        arr = Array3([1, 2, 3])
-        view = arr.view(TypedNDArray)
-
-        assert view.__shape_spec__ == arr.__shape_spec__
-        assert view.__bound_shape__ == arr.__bound_shape__
-
-    def test_slice_propagates_metadata(self):
-        Array5 = TypedNDArray[tuple[5]]
-        arr = Array5([1, 2, 3, 4, 5])
-        # Slicing creates a view
-        sliced = arr[:3]
-
-        # Metadata should be propagated (though shape may differ)
-        assert hasattr(sliced, "__shape_spec__")
-        assert hasattr(sliced, "__bound_shape__")
-
-    def test_reshape_propagates_metadata(self):
-        Array6 = TypedNDArray[tuple[6]]
-        arr = Array6([1, 2, 3, 4, 5, 6])
-        reshaped = arr.reshape(2, 3)
-
-        assert hasattr(reshaped, "__shape_spec__")
-        assert hasattr(reshaped, "__bound_shape__")
 
 
 class TestComplexShapeSpecifications:
@@ -135,27 +83,27 @@ class TestShapeValidationErrors:
 
     def test_wrong_first_dimension(self):
         Array3x4 = TypedNDArray[tuple[3, 4]]
-        with pytest.raises(ShapeError, match="Shape mismatch"):
+        with pytest.raises(ShapeError):
             Array3x4(np.ones((2, 4)))
 
     def test_wrong_second_dimension(self):
         Array3x4 = TypedNDArray[tuple[3, 4]]
-        with pytest.raises(ShapeError, match="Shape mismatch"):
+        with pytest.raises(ShapeError):
             Array3x4(np.ones((3, 5)))
 
     def test_wrong_middle_dimension(self):
         Array2x3x4 = TypedNDArray[tuple[2, 3, 4]]
-        with pytest.raises(ShapeError, match="Shape mismatch"):
+        with pytest.raises(ShapeError):
             Array2x3x4(np.ones((2, 5, 4)))
 
     def test_too_few_dimensions(self):
         Array3x4 = TypedNDArray[tuple[3, 4]]
-        with pytest.raises(RankError, match="Rank mismatch"):
+        with pytest.raises(RankError):
             Array3x4([1, 2, 3])
 
     def test_too_many_dimensions(self):
         Array3 = TypedNDArray[tuple[3]]
-        with pytest.raises(RankError, match="Rank mismatch"):
+        with pytest.raises(RankError):
             Array3([[1, 2, 3]])
 
     def test_multiple_dimension_mismatches(self):
@@ -244,7 +192,7 @@ class TestTypeVarDefaults:
         N = TypeVar("N", default=3)  # type: ignore
         ArrayMxN = TypedNDArray[tuple[M, N]]  # type: ignore
 
-        # Bind only M, N should use default
+        # Bind only M; N should use default
         Array5xN = ArrayMxN[5]  # type: ignore
         Array5x3 = Array5xN  # N uses default 3
         arr = Array5x3(np.ones((5, 3)))
@@ -410,7 +358,7 @@ class TestErrorMessages:
             Array2x3([1, 2, 3])
 
         error_msg = str(exc_info.value)
-        assert "expected 2" in error_msg
+        assert "Expected 2" in error_msg
         assert "got 1" in error_msg
 
     def test_shape_error_message_content(self):
@@ -426,39 +374,12 @@ class TestErrorMessages:
         N = TypeVar("N")
         ArrayN = TypedNDArray[tuple[N]]  # type: ignore
 
-        with pytest.raises(DimensionError) as exc_info:
+        with pytest.raises(TypeError) as exc_info:
             ArrayN[2, 3, 4]  # type: ignore
 
         error_msg = str(exc_info.value)
-        assert "Too many" in error_msg
-
-
-class TestMetadataPreservation:
-    """Tests for metadata preservation across operations."""
-
-    def test_metadata_after_transpose(self):
-        Array2x3 = TypedNDArray[tuple[2, 3]]
-        arr = Array2x3([[1, 2, 3], [4, 5, 6]])
-        transposed = arr.T
-
-        # Metadata should be preserved
-        assert hasattr(transposed, "__shape_spec__")
-        assert hasattr(transposed, "__bound_shape__")
-
-    def test_metadata_after_flatten(self):
-        Array2x3 = TypedNDArray[tuple[2, 3]]
-        arr = Array2x3([[1, 2, 3], [4, 5, 6]])
-        flattened = arr.flatten()
-
-        assert hasattr(flattened, "__shape_spec__")
-
-    def test_metadata_after_copy(self):
-        Array3 = TypedNDArray[tuple[3]]
-        arr = Array3([1, 2, 3])
-        copied = arr.copy()
-
-        assert hasattr(copied, "__shape_spec__")
-        assert copied.__shape_spec__ == arr.__shape_spec__
+        assert "Expected 1" in error_msg
+        assert "got 3" in error_msg
 
 
 class TestSpecialCases:

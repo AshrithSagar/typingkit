@@ -55,9 +55,11 @@ class DimensionError(ShapeError):
 ## Resolution & Validation
 
 
-def _resolve_dtype_runtime(
+def _resolve_dtype(
     dtype_spec: GenericAlias | TypeVar | np.generic,
 ) -> npt.DTypeLike | None:
+    """Resolve dtype at runtime."""
+
     match dtype_spec:
         # Case 1: np.dtype[T]
         case GenericAlias() as ga if get_origin(ga) is np.dtype:
@@ -84,45 +86,49 @@ def _resolve_dtype_runtime(
             return None
 
 
-def _validate_shape_runtime(arr: np.ndarray[_Shape], shape_spec: GenericAlias) -> None:
-    shape_args = list(get_args(shape_spec))
-    actual_shape = arr.shape
+def _validate_shape(expected: _Shape, actual: tuple[int, ...]) -> None:
+    """Validate shapes at runtime."""
 
     ## Rank enforcement
-    if len(shape_args) != arr.ndim:
-        raise RankError(f"Expected {len(shape_args)} dimensions, got {arr.ndim}")
+    if len(expected) != len(actual):
+        raise RankError(f"Expected {len(expected)} dimensions, got {len(actual)}")
 
     ## Shape enforcement
 
     bindings = dict[TypeVar, tuple[int, int]]()
     # store: TypeVar -> (first_index, first_value)
 
-    for idx, (expected, actual) in enumerate(zip(shape_args, actual_shape)):
-        origin = get_origin(expected)
+    for idx, (exp, act) in enumerate(zip(expected, actual)):
+        origin = get_origin(exp)
 
-        # Literal[N]
+        # Literal
         if origin is Literal:
-            literal_value = get_args(expected)[0]
-            if actual != literal_value:
+            literal_value = get_args(exp)[0]
+            if act != literal_value:
                 raise DimensionError(
-                    f"Dimension {idx}: expected {literal_value}, got {actual}"
+                    f"Dimension {idx}: expected {literal_value}, got {act}"
                 )
 
         # TypeVar
-        elif isinstance(expected, TypeVar):
-            if expected in bindings:
-                prev_index, prev_value = bindings[expected]
-                if prev_value != actual:
+        elif isinstance(exp, TypeVar):
+            if exp in bindings:
+                prev_index, prev_value = bindings[exp]
+                if prev_value != act:
                     raise ShapeError(
                         f"Inconsistent dimensions.\n"
-                        f"Found Dimension {prev_index} to be {prev_value} and Dimension {idx} to be {actual}"
-                        f" but both were constrained to the same TypeVar {expected}."
+                        f"Found Dimension {prev_index} to be {prev_value} and Dimension {idx} to be {act}"
+                        f" but both were constrained to the same TypeVar {exp}."
                     )
             else:
-                bindings[expected] = (idx, actual)
+                bindings[exp] = (idx, act)
+
+        # int
+        elif isinstance(exp, int):
+            if exp != act:
+                raise ShapeError(f"Shape mismatch: expected {expected}, got {actual}")
 
         # Relaxed dimension
-        elif expected is int or expected is Any:
+        elif exp is int or exp is Any:
             continue
 
 
@@ -338,13 +344,13 @@ class _NDShape:
         # [NOTE] Should mimick `TypedNDArray.__new__` signature
 
         if dtype is None:
-            dtype = _resolve_dtype_runtime(self.dtype_spec)
+            dtype = _resolve_dtype(self.dtype_spec)
 
         # Create `numpy.ndarray` object
         arr = self.base(object, dtype=dtype)
 
         # Runtime shape validation
-        _validate_shape_runtime(arr, self.shape_spec)
+        _validate_shape(get_args(self.shape_spec), arr.shape)
         _validate_shape_against_contexts(get_args(self.shape_spec), arr.shape)
 
         return arr
