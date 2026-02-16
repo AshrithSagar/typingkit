@@ -108,3 +108,14 @@ class TestSubclassPreservation:
         sliced = arr[1:]
 
         assert isinstance(sliced, TypedNDArray)
+
+
+class TestDTypeTypeVar:
+    def test_dtype_typevar_binding(self):
+        T = TypeVar("T", bound=np.generic)
+
+        Array = TypedNDArray[tuple[3], np.dtype[T]]
+        Array_i32 = Array[np.int32]
+
+        arr = Array_i32([1, 2, 3])
+        assert arr.dtype == np.int32
