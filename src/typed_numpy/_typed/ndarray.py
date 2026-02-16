@@ -11,6 +11,7 @@ from typing import (
     Any,
     Iterator,
     Literal,
+    NoReturn,
     Self,
     TypeAlias,
     TypeVar,
@@ -28,13 +29,17 @@ import numpy.typing as npt
 _ShapeRest = TypeVarTuple("_ShapeRest")
 
 # `numpy` privates
-_Shape: TypeAlias = tuple[Any, ...]  # Weakened type reduction
+_Shape: TypeAlias = tuple[int, ...]
 _AnyShape: TypeAlias = tuple[Any, ...]
 
 _ShapeT_co = TypeVar("_ShapeT_co", bound=_Shape, default=_AnyShape, covariant=True)
 _DTypeT_co = TypeVar("_DTypeT_co", bound=np.dtype, default=np.dtype, covariant=True)
 
 _ScalarT_co = TypeVar("_ScalarT_co", bound=np.generic, default=Any, covariant=True)
+_NonObjectScalarT = TypeVar(
+    "_NonObjectScalarT",
+    bound=np.bool | np.number | np.flexible | np.datetime64 | np.timedelta64,
+)
 
 
 ## Exceptions
@@ -233,18 +238,32 @@ class TypedNDArray(np.ndarray[_ShapeT_co, _DTypeT_co]):
     def __repr__(self) -> str:
         return str(np.asarray(self).__repr__())
 
-    @overload  # == 1D
+    @overload  # == 0D --> Not iterable
+    def __iter__(self: "TypedNDArray[tuple[()], _DTypeT_co]", /) -> NoReturn: ...
+    @overload  # == 1-d & dtype[T \ object_]
     def __iter__(
-        self: "TypedNDArray[tuple[int], np.dtype[_ScalarT_co]]",
-    ) -> Iterator[_ScalarT_co]: ...
+        self: "TypedNDArray[tuple[int], np.dtype[_NonObjectScalarT]]", /
+    ) -> Iterator[_NonObjectScalarT]: ...
+    @overload  # == 1-d & StringDType
+    def __iter__(
+        self: "TypedNDArray[tuple[int], np.dtypes.StringDType]", /
+    ) -> Iterator[str]: ...
     @overload  # >= 1D
+    # Currently, TypeVarTuple doesn't support bounds/constraints,
+    # which we'd want to bound/constrain to `_ShapeT_co` := `tuple[int, ...]`.
+    # We can relax `_ShapeT_co` to `tuple[Any, ...]` which would make the following overload type fine,
+    # but would relax bounds for each dimension, which is a trade off.
+    # So we just allow the following ~unsafely typed overload, which is just complained here
+    # and shouldn't affect when using `__iter__` in downstream code, hopefully.
     def __iter__(
-        self: "TypedNDArray[tuple[int, *_ShapeRest], _DTypeT_co]",
-    ) -> Iterator["TypedNDArray[tuple[*_ShapeRest], _DTypeT_co]"]: ...
+        self: "TypedNDArray[tuple[int, *_ShapeRest], _DTypeT_co]",  # type: ignore
+        /,
+    ) -> Iterator["TypedNDArray[tuple[*_ShapeRest], _DTypeT_co]"]: ...  # type: ignore
     @overload  # ?-d
-    def __iter__(self, /) -> Iterator[Any]: ...
+    # Not required, but can keep as a fallback
+    def __iter__(self, /) -> Iterator[Any]: ...  # type: ignore
     #
-    def __iter__(self, /) -> Iterator[Any]:
+    def __iter__(self, /) -> Iterator[Any]:  # type: ignore[override]
         return super().__iter__()
 
 
@@ -302,11 +321,6 @@ class _NDShape:
             i
             for i in free_shape_tvars
             if getattr(shape_args[i], "__default__", None) is None
-        ]
-        optional_shape_tvars = [
-            i
-            for i in free_shape_tvars
-            if getattr(shape_args[i], "__default__", None) is not None
         ]
         dtype_free = isinstance(dtype_inner, TypeVar)
         dtype_required = (
