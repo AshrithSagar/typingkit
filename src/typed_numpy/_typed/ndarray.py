@@ -298,11 +298,25 @@ class _NDShape:
         free_shape_tvars = [
             i for i, dim in enumerate(shape_args) if isinstance(dim, TypeVar)
         ]
+        required_shape_tvars = [
+            i
+            for i in free_shape_tvars
+            if getattr(shape_args[i], "__default__", None) is None
+        ]
+        optional_shape_tvars = [
+            i
+            for i in free_shape_tvars
+            if getattr(shape_args[i], "__default__", None) is not None
+        ]
         dtype_free = isinstance(dtype_inner, TypeVar)
-        expected_arity = len(free_shape_tvars) + (1 if dtype_free else 0)
-        if len(item) != expected_arity:
+        dtype_required = (
+            dtype_free and getattr(dtype_inner, "__default__", None) is None
+        )
+        min_arity = len(required_shape_tvars) + (1 if dtype_required else 0)
+        max_arity = len(free_shape_tvars) + (1 if dtype_free else 0)
+        if not (min_arity <= len(item) <= max_arity):
             raise TypeError(
-                f"Expected {expected_arity} type arguments, got {len(item)}"
+                f"Expected between {min_arity} and {max_arity} type arguments, got {len(item)}"
             )
 
         # Prepare new shape/dtype bindings
@@ -328,6 +342,17 @@ class _NDShape:
             target_pos = free_shape_tvars[dim_index]
             new_shape[target_pos] = arg
             dim_index += 1
+
+        # Fill remaining unbound shape TypeVars with defaults
+        for i in free_shape_tvars[dim_index:]:
+            tvar = shape_args[i]
+            default = getattr(tvar, "__default__", None)
+            if default is not None:
+                new_shape[i] = default
+
+        # Fill dtype default
+        if dtype_free and getattr(dtype_inner, "__default__", None) is not None:
+            new_dtype = getattr(dtype_inner, "__default__")
 
         # Return a new `_NDShape` representing the partially bound type
         return _NDShape(

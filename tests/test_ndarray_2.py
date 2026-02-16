@@ -378,7 +378,7 @@ class TestErrorMessages:
             ArrayN[2, 3, 4]  # type: ignore
 
         error_msg = str(exc_info.value)
-        assert "Expected 1" in error_msg
+        assert "Expected between 0 and 1" in error_msg
         assert "got 3" in error_msg
 
 
