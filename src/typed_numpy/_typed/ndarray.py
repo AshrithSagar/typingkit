@@ -73,9 +73,9 @@ def _resolve_dtype(
                 return None
             inner = args[0]
             match inner:
-                # np.dtype[np.generic]
-                case np.generic() as t:
-                    return t
+                # np.dtype[<subclass of np.generic>]
+                case t if isinstance(t, type) and issubclass(t, np.generic):
+                    return np.dtype(t)  # type: ignore
                 # np.dtype[TypeVar]
                 case TypeVar():
                     return None
