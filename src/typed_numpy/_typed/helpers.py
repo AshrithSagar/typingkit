@@ -23,6 +23,18 @@ THREE: TypeAlias = Literal[3]
 """Literal type for the integer `3`."""
 FOUR: TypeAlias = Literal[4]
 """Literal type for the integer `4`."""
+FIVE: TypeAlias = Literal[5]
+"""Literal type for the integer `5`."""
+SIX: TypeAlias = Literal[6]
+"""Literal type for the integer `6`."""
+SEVEN: TypeAlias = Literal[7]
+"""Literal type for the integer `7`."""
+EIGHT: TypeAlias = Literal[8]
+"""Literal type for the integer `8`."""
+NINE: TypeAlias = Literal[9]
+"""Literal type for the integer `9`."""
+TEN: TypeAlias = Literal[10]
+"""Literal type for the integer `10`."""
 
 # TypeVars
 Dim1 = TypeVar("Dim1", bound=int, default=int)
