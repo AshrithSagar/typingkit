@@ -94,16 +94,26 @@ def _resolve_dtype(
 def _validate_shape(expected: _AnyShape, actual: _Shape) -> None:
     """Validate shapes at runtime."""
 
+    # tuple[T, ...]  (variadic shape)
+    is_variadic = len(expected) == 2 and expected[1] is Ellipsis
+
     ## Rank enforcement
-    if len(expected) != len(actual):
-        raise RankError(f"Expected {len(expected)} dimensions, got {len(actual)}")
+    # In the variadic case, rank is not enforced.
+    if not is_variadic:
+        if len(expected) != len(actual):
+            raise RankError(f"Expected {len(expected)} dimensions, got {len(actual)}")
 
     ## Shape enforcement
+
+    if is_variadic:
+        dim_specs = tuple([expected[0]] * len(actual))
+    else:
+        dim_specs = expected
 
     bindings = dict[TypeVar, tuple[int, int]]()
     # store: TypeVar -> (first_index, first_value)
 
-    for idx, (exp, act) in enumerate(zip(expected, actual)):
+    for idx, (exp, act) in enumerate(zip(dim_specs, actual)):
         origin = get_origin(exp)
 
         # Literal
@@ -127,7 +137,7 @@ def _validate_shape(expected: _AnyShape, actual: _Shape) -> None:
             else:
                 bindings[exp] = (idx, act)
 
-        # int
+        # (Concrete) int
         elif isinstance(exp, int):
             if exp != act:
                 raise ShapeError(f"Shape mismatch: expected {expected}, got {actual}")
