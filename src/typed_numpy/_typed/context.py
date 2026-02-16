@@ -5,22 +5,39 @@ Manages TypeVar binding contexts for shape validation.
 """
 # src/typed_numpy/_typed/context.py
 
+# pyright: reportPrivateUsage = false
+
 import inspect
 from contextvars import ContextVar
 from functools import wraps
-from typing import Any, TypeVar, get_args, get_origin, get_type_hints
+from typing import (
+    Any,
+    Callable,
+    Concatenate,
+    ParamSpec,
+    TypeVar,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 
 from typed_numpy._typed.ndarray import DimensionError, _NDShape
 
+# Context variables
+
 _class_typevar_context = ContextVar[dict[int, dict[TypeVar, int]]](
-    "_class_typevar_context", default={}
+    "_class_typevar_context", default=dict[int, dict[TypeVar, int]]()
 )
 _method_typevar_context = ContextVar[dict[TypeVar, int]](
-    "_method_typevar_context", default={}
+    "_method_typevar_context", default=dict[TypeVar, int]()
 )
 _active_class_context = ContextVar[dict[TypeVar, int]](
-    "_active_class_context", default={}
+    "_active_class_context", default=dict[TypeVar, int]()
 )
+
+T = TypeVar("T")
+P = ParamSpec("P")  # ParamSpec for function parameters
+R = TypeVar("R")  # TypeVar for return type
 
 
 def _extract_shape_typevars(annotation: Any) -> list[tuple[int, TypeVar]]:
@@ -30,7 +47,7 @@ def _extract_shape_typevars(annotation: Any) -> list[tuple[int, TypeVar]]:
     if isinstance(annotation, _NDShape):
         return [
             (idx, dim)
-            for idx, dim in enumerate(annotation.shape_spec)
+            for idx, dim in enumerate(get_args(annotation.shape_spec))
             if isinstance(dim, TypeVar)
         ]
 
@@ -70,7 +87,9 @@ def _get_instance_class_context(instance: Any) -> dict[TypeVar, int]:
     return ctx[instance_id]
 
 
-def enforce_shapes(func):
+def enforce_shapes(
+    func: Callable[Concatenate[T, P], R],
+) -> Callable[Concatenate[T, P], R]:
     """
     Decorator to automatically validate TypeVar shape bindings.
     - Class-level TypeVars (from Generic[T]) are bound per-instance, persist across calls
@@ -79,7 +98,7 @@ def enforce_shapes(func):
     """
 
     @wraps(func)
-    def wrapper(self, *args, **kwargs):
+    def wrapper(self: T, *args: P.args, **kwargs: P.kwargs) -> R:
         hints = get_type_hints(func, include_extras=True)
         sig = inspect.signature(func)
         bound_args = sig.bind(self, *args, **kwargs)
@@ -149,7 +168,7 @@ def enforce_shapes(func):
             return_annotation = hints["return"]
             typevars = _extract_shape_typevars(return_annotation)
             if typevars and hasattr(result, "shape"):
-                actual_shape = result.shape
+                actual_shape = getattr(result, "shape")
                 for dim_idx, typevar in typevars:
                     if dim_idx >= len(actual_shape):
                         continue
