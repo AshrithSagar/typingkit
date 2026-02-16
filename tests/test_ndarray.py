@@ -12,7 +12,6 @@ import pytest
 
 from typed_numpy._typed.helpers import FOUR, THREE, TWO
 from typed_numpy._typed.ndarray import (
-    DimensionError,
     RankError,
     ShapeError,
     TypedNDArray,
@@ -31,7 +30,7 @@ class TestShapeValidation:
     def test_validate_shape_with_none(self):
         expected = (3, None, 5)
         actual = (3, 100, 5)
-        _validate_shape(expected, actual)  # Should not raise
+        _validate_shape(expected, actual)  # [FIXME] Should raise
 
     def test_validate_shape_rank_mismatch(self):
         expected = (3, 4)

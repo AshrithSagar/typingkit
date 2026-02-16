@@ -9,12 +9,7 @@ import numpy as np
 import pytest
 
 from typed_numpy._typed.helpers import FOUR, THREE, TWO
-from typed_numpy._typed.ndarray import (
-    DimensionError,
-    RankError,
-    ShapeError,
-    TypedNDArray,
-)
+from typed_numpy._typed.ndarray import RankError, ShapeError, TypedNDArray
 
 
 class TestComplexShapeSpecifications:
