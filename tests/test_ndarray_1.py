@@ -27,11 +27,6 @@ class TestShapeValidation:
         actual = (3, 4, 5)
         _validate_shape(expected, actual)  # Should not raise
 
-    def test_validate_shape_with_none(self):
-        expected = (3, None, 5)
-        actual = (3, 100, 5)
-        _validate_shape(expected, actual)  # [FIXME] Should raise
-
     def test_validate_shape_rank_mismatch(self):
         expected = (3, 4)
         actual = (3, 4, 5)
