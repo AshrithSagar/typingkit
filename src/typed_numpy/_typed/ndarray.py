@@ -91,7 +91,7 @@ def _resolve_dtype(
             return None
 
 
-def _validate_shape(expected: _Shape, actual: tuple[int, ...]) -> None:
+def _validate_shape(expected: _AnyShape, actual: _Shape) -> None:
     """Validate shapes at runtime."""
 
     ## Rank enforcement
@@ -137,9 +137,7 @@ def _validate_shape(expected: _Shape, actual: tuple[int, ...]) -> None:
             continue
 
 
-def _validate_shape_against_contexts(
-    shape_spec: _Shape, actual: tuple[int, ...]
-) -> None:
+def _validate_shape_against_contexts(shape_spec: _AnyShape, actual: _Shape) -> None:
     """Validate shape against active TypeVar contexts (class-level and method-level)."""
     from typed_numpy._typed.context import (
         _active_class_context,

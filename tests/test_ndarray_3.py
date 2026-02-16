@@ -6,19 +6,13 @@ Extended Tests for TypedNDArray - 3
 # pyright: reportGeneralTypeIssues = false
 # pyright: reportInvalidTypeArguments = false
 
-from typing import Literal, TypeAlias, TypeVar
+from typing import Literal, TypeVar
 
 import numpy as np
 import pytest
 
 from typed_numpy._typed.context import enforce_shapes
-from typed_numpy._typed.helpers import FOUR, THREE, TWO
-from typed_numpy._typed.ndarray import (
-    DimensionError,
-    RankError,
-    ShapeError,
-    TypedNDArray,
-)
+from typed_numpy._typed.ndarray import DimensionError, ShapeError, TypedNDArray
 
 
 class TestRepeatedTypeVarConsistency:
