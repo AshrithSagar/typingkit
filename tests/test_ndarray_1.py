@@ -1,7 +1,7 @@
 """
 Tests for TypedNDArray core functionality - 1
 """
-# tests/test_ndarray.py
+# tests/test_ndarray_1.py
 
 # pyright: reportPrivateUsage = false
 
