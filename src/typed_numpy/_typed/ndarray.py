@@ -6,6 +6,7 @@ NDArray
 
 # pyright: reportPrivateUsage = false
 
+import builtins
 from types import GenericAlias
 from typing import (
     Any,
@@ -23,6 +24,7 @@ from typing import (
 )
 
 import numpy as np
+import numpy._typing as npt_
 import numpy.typing as npt
 
 ## Typings
@@ -245,6 +247,10 @@ class TypedNDArray(np.ndarray[_ShapeT_co, _DTypeT_co]):
         obj = cast(Self, obj)  # pyright: ignore[reportUnnecessaryCast]  # pyrefly: ignore [redundant-cast]
         return obj
 
+    def __array_finalize__(self, obj: npt.NDArray[Any] | None, /) -> None:
+        if obj is None:
+            return
+
     def __repr__(self) -> str:
         return str(np.asarray(self).__repr__())
 
@@ -275,6 +281,37 @@ class TypedNDArray(np.ndarray[_ShapeT_co, _DTypeT_co]):
     #
     def __iter__(self, /) -> Iterator[Any]:  # pyright: ignore[reportIncompatibleMethodOverride]
         return super().__iter__()
+
+    @overload
+    def astype(
+        self,
+        dtype: npt_._DTypeLike[np._ScalarT],
+        order: np._OrderKACF = ...,
+        casting: np._CastingKind = ...,
+        subok: builtins.bool = ...,
+        copy: builtins.bool | np._CopyMode = ...,
+    ) -> "TypedNDArray[_ShapeT_co, np.dtype[np._ScalarT]]": ...
+    @overload
+    def astype(
+        self,
+        dtype: npt_.DTypeLike | None,
+        order: np._OrderKACF = ...,
+        casting: np._CastingKind = ...,
+        subok: builtins.bool = ...,
+        copy: builtins.bool | np._CopyMode = ...,
+    ) -> "TypedNDArray[_ShapeT_co, np.dtype]": ...
+    #
+    def astype(
+        self,
+        dtype: npt_.DTypeLike | None,
+        order: np._OrderKACF = "K",
+        casting: np._CastingKind = "unsafe",
+        subok: builtins.bool = True,
+        copy: builtins.bool | np._CopyMode = True,
+    ):
+        return super().astype(
+            dtype=dtype, order=order, casting=casting, subok=subok, copy=copy
+        )
 
 
 ## Deferred shape binding
