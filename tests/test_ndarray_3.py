@@ -6,7 +6,7 @@ Extended Tests for TypedNDArray - 3
 # pyright: reportGeneralTypeIssues = false
 # pyright: reportInvalidTypeArguments = false
 
-from typing import TypeVar
+from typing import Literal, TypeVar
 
 import numpy as np
 import pytest
@@ -61,18 +61,152 @@ class TestMethodLevelIsolation:
 
 
 class TestReturnValidation:
-    def test_return_shape_violation(self) -> None:
+    def test_typevar_return_violation(self) -> None:
+        """Return shape uses the same TypeVar as input; should raise if mismatched."""
+
         class Model:
             @enforce_shapes
             def foo(self, x: TypedNDArray[tuple[N]]) -> TypedNDArray[tuple[N]]:
-                return TypedNDArray([1, 2, 3])  # always size 3
+                # Return always size 3, input will be size 5
+                return TypedNDArray([1, 2, 3])
 
         m = Model()
-
         a = TypedNDArray[tuple[FIVE]]([1, 2, 3, 4, 5])
 
         with pytest.raises(DimensionError):
             m.foo(a)
+
+    def test_literal_return_violation(self) -> None:
+        """Return shape is a Literal; should raise if actual shape differs."""
+
+        class Model:
+            @enforce_shapes
+            def foo(self, x: TypedNDArray[tuple[N]]) -> TypedNDArray[tuple[TWO]]:
+                return TypedNDArray([1, 2, 3])  # Always size 3
+
+        m = Model()
+        a = TypedNDArray[tuple[FIVE]]([1, 2, 3, 4, 5])
+
+        with pytest.raises(DimensionError):
+            m.foo(a)
+
+    def test_typevar_return_pass(self) -> None:
+        """Return shape matches TypeVar-bound input; should pass."""
+
+        class Model:
+            @enforce_shapes
+            def foo(self, x: TypedNDArray[tuple[N]]) -> TypedNDArray[tuple[N]]:
+                return TypedNDArray([1, 2, 3, 4, 5])  # same as input
+
+        m = Model()
+        a = TypedNDArray[tuple[FIVE]]([1, 2, 3, 4, 5])
+        result = m.foo(a)
+        assert result.shape == a.shape
+
+    def test_literal_return_pass(self) -> None:
+        """Return shape matches Literal; should pass."""
+
+        class Model:
+            @enforce_shapes
+            def foo(self, x: TypedNDArray[tuple[N]]) -> TypedNDArray[tuple[THREE]]:
+                return TypedNDArray([1, 2, 3])
+
+        m = Model()
+        a = TypedNDArray[tuple[THREE]]([1, 2, 3])
+        result = m.foo(a)
+        assert result.shape == (3,)
+
+
+class TestArgumentValidation:
+    def test_literal_input_violation(self) -> None:
+        """Input shape mismatches a Literal; should raise DimensionError."""
+
+        class Model:
+            @enforce_shapes
+            def foo(
+                self, x: TypedNDArray[tuple[Literal[4]]]
+            ) -> TypedNDArray[tuple[Literal[4]]]:
+                return x
+
+        m = Model()
+        a = TypedNDArray[tuple[Literal[5]]]([1, 2, 3, 4, 5])
+
+        with pytest.raises(DimensionError):
+            m.foo(a)  # type: ignore  # This type mismatch is intended
+
+    def test_typevar_input_pass(self) -> None:
+        """Input shape matches TypeVar; should pass."""
+
+        class Model:
+            @enforce_shapes
+            def foo(self, x: TypedNDArray[tuple[N]]) -> TypedNDArray[tuple[N]]:
+                return x
+
+        m = Model()
+        a = TypedNDArray[tuple[FIVE]]([1, 2, 3, 4, 5])
+        result = m.foo(a)
+        assert result.shape == a.shape
+
+    def test_literal_input_pass(self) -> None:
+        """Input shape matches Literal; should pass."""
+
+        class Model:
+            @enforce_shapes
+            def foo(
+                self, x: TypedNDArray[tuple[Literal[3]]]
+            ) -> TypedNDArray[tuple[Literal[3]]]:
+                return x
+
+        m = Model()
+        a = TypedNDArray[tuple[THREE]]([1, 2, 3])
+        result = m.foo(a)
+        assert result.shape == (3,)
+
+    def test_multiple_args_typevars(self) -> None:
+        """Function with multiple TypeVar arguments; mismatched shapes raise DimensionError."""
+
+        class Model:
+            @enforce_shapes
+            def foo(
+                self, x: TypedNDArray[tuple[N]], y: TypedNDArray[tuple[N]]
+            ) -> TypedNDArray[tuple[N]]:
+                return x
+
+        m = Model()
+        x = TypedNDArray[tuple[FIVE]]([1, 2, 3, 4, 5])
+        y_good = TypedNDArray[tuple[FIVE]]([10, 20, 30, 40, 50])
+        y_bad = TypedNDArray[tuple[THREE]]([10, 20, 30])
+
+        # Good call
+        result = m.foo(x, y_good)
+        assert result.shape == (5,)
+
+        # Bad call
+        with pytest.raises(DimensionError):
+            m.foo(x, y_bad)
+
+    def test_mixed_typevar_and_literal_args(self) -> None:
+        """Function with TypeVar and Literal in arguments; should validate separately."""
+
+        class Model:
+            @enforce_shapes
+            def foo(
+                self, x: TypedNDArray[tuple[N]], y: TypedNDArray[tuple[THREE]]
+            ) -> TypedNDArray[tuple[N]]:
+                return x
+
+        m = Model()
+        x_good = TypedNDArray[tuple[FIVE]]([1, 2, 3, 4, 5])
+        y_good = TypedNDArray[tuple[THREE]]([10, 20, 30])
+        y_bad = TypedNDArray[tuple[FIVE]]([10, 20, 30, 40, 50])
+
+        # Good call
+        result = m.foo(x_good, y_good)
+        assert result.shape == (5,)
+
+        # Bad call: Literal mismatch
+        with pytest.raises(DimensionError):
+            m.foo(x_good, y_bad)  # type: ignore  # This type mismatch is intended
 
 
 class TestZeroDimIteration:

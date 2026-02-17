@@ -21,7 +21,12 @@ from typing import (
     get_type_hints,
 )
 
-from typed_numpy._typed.ndarray import DimensionError, _NDShape
+from typed_numpy._typed.ndarray import (
+    DimensionError,
+    _NDShape,
+    _validate_shape,
+    _validate_shape_against_contexts,
+)
 
 # Context variables
 
@@ -166,6 +171,20 @@ def enforce_shapes(
         # Validate return
         if "return" in hints and result is not None:
             return_annotation = hints["return"]
+
+            shape_spec = None
+            if isinstance(return_annotation, _NDShape):
+                shape_spec = get_args(return_annotation.shape_spec)
+            else:
+                origin = get_origin(return_annotation)
+                if origin is not None:
+                    ret_args = get_args(return_annotation)
+                    if ret_args and get_origin(ret_args[0]) is tuple:
+                        shape_spec = get_args(ret_args[0])
+            if shape_spec and hasattr(result, "shape"):
+                _validate_shape(shape_spec, getattr(result, "shape"))
+                _validate_shape_against_contexts(shape_spec, getattr(result, "shape"))
+
             typevars = _extract_shape_typevars(return_annotation)
             if typevars and hasattr(result, "shape"):
                 actual_shape = getattr(result, "shape")
