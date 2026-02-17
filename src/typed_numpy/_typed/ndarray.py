@@ -415,12 +415,16 @@ class _NDShape:
         if dtype_free and getattr(dtype_inner, "__default__", None) is not None:
             new_dtype = getattr(dtype_inner, "__default__")
 
+        # Avoid double-wrapping dtype
+        if get_origin(new_dtype) is np.dtype:
+            dtype_alias = cast(GenericAlias, new_dtype)
+        else:
+            dtype_alias = GenericAlias(np.dtype, (new_dtype,))
+
+        shape_alias = GenericAlias(tuple, tuple(new_shape))
+
         # Return a new `_NDShape` representing the partially bound type
-        return _NDShape(
-            self.base,
-            GenericAlias(tuple, tuple(new_shape)),
-            GenericAlias(np.dtype, (new_dtype,)),
-        )
+        return _NDShape(self.base, shape_alias, dtype_alias)
 
     def __call__(
         self,
