@@ -132,7 +132,7 @@ def enforce_shapes(
                         expected_dim = class_context[typevar]
                         if actual_dim != expected_dim:
                             raise DimensionError(
-                                f"In {func.__name__}(...), parameter `{param_name}`'s "
+                                f"In {func.__name__}(...), parameter `{param_name}`'s "  # ty: ignore[unresolved-attribute]
                                 f"dimension {dim_idx} [{typevar}] "
                                 f"expected {expected_dim} (class-level binding), "
                                 f"got {actual_dim}"
@@ -145,7 +145,7 @@ def enforce_shapes(
                         expected_dim = method_context[typevar]
                         if actual_dim != expected_dim:
                             raise DimensionError(
-                                f"In {func.__name__}(...), parameter `{param_name}`'s "
+                                f"In {func.__name__}(...), parameter `{param_name}`'s "  # ty: ignore[unresolved-attribute]
                                 f"dimension {dim_idx} [{typevar}] "
                                 f"expected {expected_dim} (method-level binding), "
                                 f"got {actual_dim}"
@@ -181,7 +181,7 @@ def enforce_shapes(
                         if actual_dim != expected_dim:
                             level = "class" if is_class_level else "method"
                             raise DimensionError(
-                                f"In {func.__name__}(...) return value: "
+                                f"In {func.__name__}(...) return value: "  # ty: ignore[unresolved-attribute]
                                 f"dimension {dim_idx} ({typevar.__name__}): "
                                 f"expected {expected_dim} ({level}-level binding), "
                                 f"got {actual_dim}"

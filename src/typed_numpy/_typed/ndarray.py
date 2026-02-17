@@ -242,7 +242,7 @@ class TypedNDArray(np.ndarray[_ShapeT_co, _DTypeT_co]):
 
         # The `.view(...)` method should be used when subclassing `numpy.ndarray`.
         obj = arr.view(cls)
-        obj = cast(Self, obj)  # pyright: ignore[reportUnnecessaryCast]
+        obj = cast(Self, obj)  # pyright: ignore[reportUnnecessaryCast]  # pyrefly: ignore [redundant-cast]
         return obj
 
     def __repr__(self) -> str:
@@ -266,9 +266,9 @@ class TypedNDArray(np.ndarray[_ShapeT_co, _DTypeT_co]):
     # So we just allow the following ~unsafely typed overload, which is just complained here
     # and shouldn't affect when using `__iter__` in downstream code, hopefully.
     def __iter__(
-        self: "TypedNDArray[tuple[int, *_ShapeRest], _DTypeT_co]",  # type: ignore
+        self: "TypedNDArray[tuple[int, *_ShapeRest], _DTypeT_co]",  # type: ignore[type-var]  # ty: ignore[unused-ignore-comment]
         /,
-    ) -> Iterator["TypedNDArray[tuple[*_ShapeRest], _DTypeT_co]"]: ...  # type: ignore
+    ) -> Iterator["TypedNDArray[tuple[*_ShapeRest], _DTypeT_co]"]: ...  # type: ignore[type-var]  # ty: ignore[unused-ignore-comment]
     @overload  # ?-d
     # Not required, but can keep as a fallback
     def __iter__(self, /) -> Iterator[Any]: ...  # pyright: ignore[reportOverlappingOverload]

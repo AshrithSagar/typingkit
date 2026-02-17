@@ -52,7 +52,7 @@ class _ShapeBuilder(Generic[_ShapeT, _ScalarT]):
 
 class _ShapeFactory:
     def __getitem__(self, dims: _ShapeT) -> _ShapeBuilder[_ShapeT, Any]:
-        if not isinstance(dims, tuple):  # type: ignore
+        if not isinstance(dims, tuple):  # pyright: ignore[reportUnnecessaryIsInstance]
             dims = (dims,)
 
         shape_spec = GenericAlias(tuple, dims)

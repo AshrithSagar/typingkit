@@ -368,7 +368,7 @@ class TestSpecialCases:
         assert arr.dtype == dt
 
     def test_object_dtype(self) -> None:
-        arr = TypedNDArray([1, "hello", [1, 2]], dtype=object)  # type: ignore
+        arr = TypedNDArray([1, "hello", [1, 2]], dtype=object)  # type: ignore  # ty: ignore[unused-ignore-comment]
         assert arr.dtype == object
         assert arr.shape == (3,)
 
