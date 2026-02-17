@@ -16,6 +16,7 @@ from typing import (
     TypeAlias,
     TypeVar,
     TypeVarTuple,
+    cast,
     get_args,
     get_origin,
     overload,
@@ -75,7 +76,7 @@ def _resolve_dtype(
             match inner:
                 # np.dtype[<subclass of np.generic>]
                 case t if isinstance(t, type) and issubclass(t, np.generic):
-                    return np.dtype(t)  # type: ignore
+                    return np.dtype(t)  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
                 # np.dtype[TypeVar]
                 case TypeVar():
                     return None
@@ -241,6 +242,7 @@ class TypedNDArray(np.ndarray[_ShapeT_co, _DTypeT_co]):
 
         # The `.view(...)` method should be used when subclassing `numpy.ndarray`.
         obj = arr.view(cls)
+        obj = cast(Self, obj)  # pyright: ignore[reportUnnecessaryCast]
         return obj
 
     def __repr__(self) -> str:
@@ -269,9 +271,9 @@ class TypedNDArray(np.ndarray[_ShapeT_co, _DTypeT_co]):
     ) -> Iterator["TypedNDArray[tuple[*_ShapeRest], _DTypeT_co]"]: ...  # type: ignore
     @overload  # ?-d
     # Not required, but can keep as a fallback
-    def __iter__(self, /) -> Iterator[Any]: ...  # type: ignore
+    def __iter__(self, /) -> Iterator[Any]: ...  # pyright: ignore[reportOverlappingOverload]
     #
-    def __iter__(self, /) -> Iterator[Any]:  # type: ignore[override]
+    def __iter__(self, /) -> Iterator[Any]:  # pyright: ignore[reportIncompatibleMethodOverride]
         return super().__iter__()
 
 
