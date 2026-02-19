@@ -113,11 +113,32 @@ def enforce_shapes(
                 continue
 
             annotation = hints[param_name]
-            typevars = _extract_shape_typevars(annotation)
-            if not typevars or not hasattr(param_value, "shape"):
+            if not hasattr(param_value, "shape"):
                 continue
 
+            origin = get_origin(annotation)
+            if origin is None:
+                continue
+
+            annot_args = get_args(annotation)
+            if not annot_args:
+                continue
+
+            shape_spec = annot_args[0]
+            if get_origin(shape_spec) is not tuple:
+                continue
+
+            shape_dims = get_args(shape_spec)
             actual_shape = param_value.shape
+
+            _validate_shape(shape_dims, actual_shape)
+
+            typevars = [
+                (idx, dim)
+                for idx, dim in enumerate(shape_dims)
+                if isinstance(dim, TypeVar)
+            ]
+
             for dim_idx, typevar in typevars:
                 if dim_idx >= len(actual_shape):
                     continue
