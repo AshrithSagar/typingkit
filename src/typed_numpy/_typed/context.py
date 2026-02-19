@@ -44,27 +44,70 @@ P = ParamSpec("P")  # ParamSpec for function parameters
 R = TypeVar("R")  # TypeVar for return type
 
 
-def _extract_shape_typevars(annotation: Any) -> list[tuple[int, TypeVar]]:
-    """Extract TypeVars from a TypedNDArray annotation with their dimension indices."""
+def _extract_shape_dims(annotation: Any) -> tuple[Any, ...] | None:
+    """Return shape dimension spec tuple[...] from TypedNDArray annotation."""
 
-    # GenericAlias
     origin = get_origin(annotation)
     if origin is None:
-        return []
+        return None
 
     args = get_args(annotation)
     if not args:
-        return []
+        return None
 
     shape_spec = args[0]
     if get_origin(shape_spec) is not tuple:
-        return []
+        return None
 
-    shape_dims = get_args(shape_spec)
+    return get_args(shape_spec)
 
-    return [
-        (idx, dim) for idx, dim in enumerate(shape_dims) if isinstance(dim, TypeVar)
-    ]
+
+def _validate_and_bind(
+    *,
+    shape_dims: tuple[Any, ...],
+    actual_shape: tuple[int, ...],
+    owner_cls: type,
+    func_name: str,
+    param_name: str | None,
+    class_context: dict[TypeVar, int],
+    method_context: dict[TypeVar, int],
+) -> None:
+    """
+    Performs:
+    1. Structural validation (_validate_shape)
+    2. TypeVar binding + consistency checks
+    """
+
+    # Structural validation (Literal, int, rank, repeated TypeVar)
+    _validate_shape(shape_dims, actual_shape)
+
+    for dim_idx, dim in enumerate(shape_dims):
+        if not isinstance(dim, TypeVar):
+            continue
+        if dim_idx >= len(actual_shape):
+            continue
+
+        actual_dim = actual_shape[dim_idx]
+        is_class_level = _is_class_level_typevar(dim, owner_cls)
+        context = class_context if is_class_level else method_context
+
+        if dim in context:
+            expected_dim = context[dim]
+            if actual_dim != expected_dim:
+                level = "class" if is_class_level else "method"
+                location = (
+                    f"parameter `{param_name}`"
+                    if param_name is not None
+                    else "return value"
+                )
+                raise DimensionError(
+                    f"In {func_name}(...), {location} "
+                    f"dimension {dim_idx} [{dim}] "
+                    f"expected {expected_dim} ({level}-level binding), "
+                    f"got {actual_dim}"
+                )
+        else:
+            context[dim] = actual_dim
 
 
 def _is_class_level_typevar(typevar: TypeVar, owner_cls: type) -> bool:
@@ -105,72 +148,28 @@ def enforce_shapes(
         class_context = _get_instance_class_context(self)
         method_context = dict[TypeVar, int]()
 
-        # Validate inputs
+        # Validate arguments
         for param_name, param_value in bound_args.arguments.items():
             if param_name == "self":
                 continue
             if param_name not in hints:
                 continue
-
-            annotation = hints[param_name]
             if not hasattr(param_value, "shape"):
                 continue
 
-            origin = get_origin(annotation)
-            if origin is None:
+            shape_dims = _extract_shape_dims(hints[param_name])
+            if shape_dims is None:
                 continue
 
-            annot_args = get_args(annotation)
-            if not annot_args:
-                continue
-
-            shape_spec = annot_args[0]
-            if get_origin(shape_spec) is not tuple:
-                continue
-
-            shape_dims = get_args(shape_spec)
-            actual_shape = param_value.shape
-
-            _validate_shape(shape_dims, actual_shape)
-
-            typevars = [
-                (idx, dim)
-                for idx, dim in enumerate(shape_dims)
-                if isinstance(dim, TypeVar)
-            ]
-
-            for dim_idx, typevar in typevars:
-                if dim_idx >= len(actual_shape):
-                    continue
-
-                actual_dim = actual_shape[dim_idx]
-                is_class_level = _is_class_level_typevar(typevar, owner_cls)
-                if is_class_level:
-                    if typevar in class_context:
-                        expected_dim = class_context[typevar]
-                        if actual_dim != expected_dim:
-                            raise DimensionError(
-                                f"In {func.__name__}(...), parameter `{param_name}`'s "  # ty: ignore[unresolved-attribute]
-                                f"dimension {dim_idx} [{typevar}] "
-                                f"expected {expected_dim} (class-level binding), "
-                                f"got {actual_dim}"
-                            )
-                    else:
-                        # First binding for this instance
-                        class_context[typevar] = actual_dim
-                else:
-                    if typevar in method_context:
-                        expected_dim = method_context[typevar]
-                        if actual_dim != expected_dim:
-                            raise DimensionError(
-                                f"In {func.__name__}(...), parameter `{param_name}`'s "  # ty: ignore[unresolved-attribute]
-                                f"dimension {dim_idx} [{typevar}] "
-                                f"expected {expected_dim} (method-level binding), "
-                                f"got {actual_dim}"
-                            )
-                    else:
-                        # First binding in this call
-                        method_context[typevar] = actual_dim
+            _validate_and_bind(
+                shape_dims=shape_dims,
+                actual_shape=param_value.shape,
+                owner_cls=owner_cls,
+                func_name=func.__name__,
+                param_name=param_name,
+                class_context=class_context,
+                method_context=method_context,
+            )
 
         # Execute function with active contexts
         method_token = _method_typevar_context.set(method_context)
@@ -182,39 +181,22 @@ def enforce_shapes(
             _active_class_context.reset(class_token)
 
         # Validate return
-        if "return" in hints and result is not None:
-            return_annotation = hints["return"]
+        if "return" in hints and result is not None and hasattr(result, "shape"):
+            shape_dims = _extract_shape_dims(hints["return"])
+            actual_shape = getattr(result, "shape")
+            if shape_dims is not None:
+                _validate_and_bind(
+                    shape_dims=shape_dims,
+                    actual_shape=actual_shape,
+                    owner_cls=owner_cls,
+                    func_name=func.__name__,
+                    param_name=None,
+                    class_context=class_context,
+                    method_context=method_context,
+                )
 
-            shape_spec = None
-            origin = get_origin(return_annotation)
-            if origin is not None:
-                ret_args = get_args(return_annotation)
-                if ret_args and get_origin(ret_args[0]) is tuple:
-                    shape_spec = get_args(ret_args[0])
-            if shape_spec and hasattr(result, "shape"):
-                _validate_shape(shape_spec, getattr(result, "shape"))
-                _validate_shape_against_contexts(shape_spec, getattr(result, "shape"))
-
-            typevars = _extract_shape_typevars(return_annotation)
-            if typevars and hasattr(result, "shape"):
-                actual_shape = getattr(result, "shape")
-                for dim_idx, typevar in typevars:
-                    if dim_idx >= len(actual_shape):
-                        continue
-
-                    actual_dim = actual_shape[dim_idx]
-                    is_class_level = _is_class_level_typevar(typevar, owner_cls)
-                    context = class_context if is_class_level else method_context
-                    if typevar in context:
-                        expected_dim = context[typevar]
-                        if actual_dim != expected_dim:
-                            level = "class" if is_class_level else "method"
-                            raise DimensionError(
-                                f"In {func.__name__}(...) return value: "  # ty: ignore[unresolved-attribute]
-                                f"dimension {dim_idx} ({typevar.__name__}): "
-                                f"expected {expected_dim} ({level}-level binding), "
-                                f"got {actual_dim}"
-                            )
+                # context-aware validation (cross-call)
+                _validate_shape_against_contexts(shape_dims, actual_shape)
 
         return result
 
