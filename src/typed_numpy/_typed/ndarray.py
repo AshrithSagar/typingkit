@@ -190,15 +190,7 @@ class TypedNDArray(np.ndarray[_ShapeT_co, _DTypeT_co]):
     """Generic `numpy.ndarray` subclass with static shape typing and runtime shape validation."""
 
     @classmethod
-    def __class_getitem__(
-        cls,
-        item:
-        # Stronger type promotion; numpy.ndarray types it as `Any`;
-        # The typing doesn't matter here really, since `GenericAlias` is intended as a runtime construct.
-        # We try to include the possible runtime types here.
-        GenericAlias | TypeVar | tuple[GenericAlias | TypeVar, GenericAlias | TypeVar],
-        /,
-    ) -> Any:  # Overrides base; This should actually return a `GenericAlias`, strictly speaking;
+    def __class_getitem__(cls, item: Any, /) -> GenericAlias:
         # [HACK] Misuses __class_getitem__
         # See https://docs.python.org/3/reference/datamodel.html#the-purpose-of-class-getitem
 
@@ -209,21 +201,15 @@ class TypedNDArray(np.ndarray[_ShapeT_co, _DTypeT_co]):
         # which is passed in to `__class_getitem__` as a `tuple[GenericAlias, GenericAlias]`.
         # Any other case would result in a static error already.
 
-        if isinstance(item, tuple):
-            if len(item) != 2:
-                raise TypeError(f"{cls.__name__}[...] expects (shape, dtype) or shape")
-            _shape, _dtype = item
-        else:
-            _shape, _dtype = item, GenericAlias(np.dtype, (Any,))
-            # The `_dtype` default here should match the default in `_DTypeT_co`.
-
         # We defer the arguments to `_NDShape`. It has two roles:
         # 1. Support handling further partial binding just as the type system expects.
         #   This is done through `_NDShape.__getitem__`.
         # 2. Transfer the control back to `TypedNDArray` when its `_NDShape.__call__` method is called,
         # which should then invoke `TypedNDArray.__new__`.
         # Additionally we may use the bindings to perform runtime validation here.
-        return _NDShape(cls, _shape, _dtype)
+
+        ga = super().__class_getitem__(item)
+        return _NDShape.from_generic_alias(ga)
 
     # [FIXME]: Can we skip this method? It just uses
     #   `np.asarray(object, dtype=dtype).view(cls)`
@@ -318,133 +304,49 @@ class TypedNDArray(np.ndarray[_ShapeT_co, _DTypeT_co]):
 ## Deferred shape binding
 
 
-class _NDShape:
+class _NDShape(GenericAlias):
     """
     Deferred TypedNDArray constructor for shapes with TypeVars.
     Enables progressive type specialization, behaving like a type-level curry.
     """
 
-    __slots__ = ("base", "shape_spec", "dtype_spec")
+    @classmethod
+    def from_generic_alias(cls, alias: GenericAlias) -> Self:
+        return cls(alias.__origin__, alias.__args__)  # pyright: ignore[reportArgumentType]
 
-    def __init__(
-        self,
-        base: type[TypedNDArray],
-        shape_spec: GenericAlias | TypeVar,
-        dtype_spec: GenericAlias | TypeVar = GenericAlias(np.dtype, Any),
-    ):
-        self.base = base
-        self.shape_spec = shape_spec
-        self.dtype_spec = dtype_spec
-
-    def __getitem__(
-        self,
-        # The typing doesn't matter here really. We try to include the possible runtime types here.
-        item: int
-        # We type it as `int` here, but in reality it is a `Literal` since
-        # the type system only allows that when specifying in (full/partial) `TypedNDArray`.
-        | type[int]
-        | TypeVar
-        | np.dtype
-        | np.generic
-        | GenericAlias
-        | tuple[int | type[int] | TypeVar | np.dtype | np.generic | GenericAlias, ...],
-    ) -> "_NDShape":
-        """Bind dimensions to unbound TypeVars by position, using defaults for missing ones."""
-        if not isinstance(item, tuple):
-            item = (item,)
-
-        # Extract current shape and dtype args
-        shape_args = list(get_args(self.shape_spec))
-        if isinstance(self.dtype_spec, GenericAlias):
-            dtype_args = list(get_args(self.dtype_spec))
-            dtype_inner = dtype_args[0] if dtype_args else Any
-        else:
-            dtype_inner = self.dtype_spec
-
-        # Identify free TypeVars in shape and dtype
-        free_shape_tvars = [
-            i for i, dim in enumerate(shape_args) if isinstance(dim, TypeVar)
-        ]
-        required_shape_tvars = [
-            i
-            for i in free_shape_tvars
-            if getattr(shape_args[i], "__default__", None) is None
-        ]
-        dtype_free = isinstance(dtype_inner, TypeVar)
-        dtype_required = (
-            dtype_free and getattr(dtype_inner, "__default__", None) is None
-        )
-        min_arity = len(required_shape_tvars) + (1 if dtype_required else 0)
-        max_arity = len(free_shape_tvars) + (1 if dtype_free else 0)
-        if not (min_arity <= len(item) <= max_arity):
-            raise TypeError(
-                f"Expected between {min_arity} and {max_arity} type arguments, got {len(item)}"
-            )
-
-        # Prepare new shape/dtype bindings
-        new_shape = shape_args[:]
-        new_dtype = dtype_inner
-        dim_index = 0
-        for arg in item:
-            origin = get_origin(arg)
-
-            # Handle dtype binding
-            if (
-                (isinstance(arg, type) and issubclass(arg, np.generic))
-                or origin is np.dtype
-                or (isinstance(arg, TypeVar) and dtype_free)
-            ):
-                new_dtype = arg
-                dtype_free = False
-                continue
-
-            # Handle dimension binding
-            if dim_index >= len(free_shape_tvars):
-                raise TypeError("Too many dimension arguments")
-            target_pos = free_shape_tvars[dim_index]
-            new_shape[target_pos] = arg
-            dim_index += 1
-
-        # Fill remaining unbound shape TypeVars with defaults
-        for i in free_shape_tvars[dim_index:]:
-            tvar = shape_args[i]
-            default = getattr(tvar, "__default__", None)
-            if default is not None:
-                new_shape[i] = default
-
-        # Fill dtype default
-        if dtype_free and getattr(dtype_inner, "__default__", None) is not None:
-            new_dtype = getattr(dtype_inner, "__default__")
-
-        # Avoid double-wrapping dtype
-        if get_origin(new_dtype) is np.dtype:
-            dtype_alias = cast(GenericAlias, new_dtype)
-        else:
-            dtype_alias = GenericAlias(np.dtype, (new_dtype,))
-
-        shape_alias = GenericAlias(tuple, tuple(new_shape))
-
-        # Return a new `_NDShape` representing the partially bound type
-        return _NDShape(self.base, shape_alias, dtype_alias)
+    def __getitem__(self, typeargs: Any) -> Self:
+        ga = super().__getitem__(typeargs)
+        return type(self).from_generic_alias(ga)
 
     def __call__(
         self,
         object: npt.ArrayLike,
         dtype: npt.DTypeLike | None = None,
-    ) -> TypedNDArray[_AnyShape, np.dtype[Any]]:
+    ) -> TypedNDArray:
         # [NOTE] Should mimick `TypedNDArray.__new__` signature
 
+        base = get_origin(self)
+        args = get_args(self)
+
+        if len(args) == 2:
+            shape_spec, dtype_spec = args
+        elif len(args) == 1:
+            (shape_spec,) = args
+            dtype_spec = GenericAlias(np.dtype, Any)
+            # The `dtype_spec` default here should match the default in `_DTypeT_co`.
+        else:
+            raise TypeError
+
         if dtype is None:
-            dtype = _resolve_dtype(self.dtype_spec)
+            dtype = _resolve_dtype(dtype_spec)
 
         # Create `numpy.ndarray` object
-        arr = self.base(object, dtype=dtype)
+        arr = base(object, dtype=dtype)
 
         # Runtime shape validation
-        _validate_shape(get_args(self.shape_spec), arr.shape)
-        _validate_shape_against_contexts(get_args(self.shape_spec), arr.shape)
+        shape_args = get_args(shape_spec)
+        arr_shape = arr.shape
+        _validate_shape(shape_args, arr_shape)
+        _validate_shape_against_contexts(shape_args, arr_shape)
 
-        return arr
-
-    def __repr__(self) -> str:
-        return f"{self.base.__name__}[{self.shape_spec}, {self.dtype_spec}]"
+        return arr.view(TypedNDArray)

@@ -23,7 +23,6 @@ from typing import (
 
 from typed_numpy._typed.ndarray import (
     DimensionError,
-    _NDShape,
     _validate_shape,
     _validate_shape_against_contexts,
 )
@@ -48,14 +47,6 @@ R = TypeVar("R")  # TypeVar for return type
 def _extract_shape_typevars(annotation: Any) -> list[tuple[int, TypeVar]]:
     """Extract TypeVars from a TypedNDArray annotation with their dimension indices."""
 
-    # _NDShape
-    if isinstance(annotation, _NDShape):
-        return [
-            (idx, dim)
-            for idx, dim in enumerate(get_args(annotation.shape_spec))
-            if isinstance(dim, TypeVar)
-        ]
-
     # GenericAlias
     origin = get_origin(annotation)
     if origin is None:
@@ -66,13 +57,14 @@ def _extract_shape_typevars(annotation: Any) -> list[tuple[int, TypeVar]]:
         return []
 
     shape_spec = args[0]
-    if get_origin(shape_spec) is tuple:
-        shape_dims = get_args(shape_spec)
-        return [
-            (idx, dim) for idx, dim in enumerate(shape_dims) if isinstance(dim, TypeVar)
-        ]
+    if get_origin(shape_spec) is not tuple:
+        return []
 
-    return []
+    shape_dims = get_args(shape_spec)
+
+    return [
+        (idx, dim) for idx, dim in enumerate(shape_dims) if isinstance(dim, TypeVar)
+    ]
 
 
 def _is_class_level_typevar(typevar: TypeVar, owner_cls: type) -> bool:
@@ -173,14 +165,11 @@ def enforce_shapes(
             return_annotation = hints["return"]
 
             shape_spec = None
-            if isinstance(return_annotation, _NDShape):
-                shape_spec = get_args(return_annotation.shape_spec)
-            else:
-                origin = get_origin(return_annotation)
-                if origin is not None:
-                    ret_args = get_args(return_annotation)
-                    if ret_args and get_origin(ret_args[0]) is tuple:
-                        shape_spec = get_args(ret_args[0])
+            origin = get_origin(return_annotation)
+            if origin is not None:
+                ret_args = get_args(return_annotation)
+                if ret_args and get_origin(ret_args[0]) is tuple:
+                    shape_spec = get_args(ret_args[0])
             if shape_spec and hasattr(result, "shape"):
                 _validate_shape(shape_spec, getattr(result, "shape"))
                 _validate_shape_against_contexts(shape_spec, getattr(result, "shape"))
