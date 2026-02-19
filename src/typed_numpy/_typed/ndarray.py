@@ -380,6 +380,41 @@ class TypedNDArray(np.ndarray[_ShapeT_co, _DTypeT_co]):
     ) -> "TypedNDArray[tuple[int], _DTypeT_co]":
         return super().flatten(order=order)  # type: ignore[return-value]
 
+    @overload  # type: ignore
+    def __getitem__(
+        self: "TypedNDArray[tuple[int], np.dtype[_ScalarT_co]]", key: int
+    ) -> _ScalarT_co: ...
+    @overload
+    def __getitem__(
+        self: "TypedNDArray[tuple[int, *_ShapeRest], _DTypeT_co]",  # type: ignore[type-var]  # ty: ignore[unused-ignore-comment]
+        key: int,
+    ) -> "TypedNDArray[tuple[*_ShapeRest], _DTypeT_co]": ...  # type: ignore[type-var]  # ty: ignore[unused-ignore-comment]
+    @overload
+    def __getitem__(
+        self: "TypedNDArray[tuple[int, *_ShapeRest], _DTypeT_co]",  # type: ignore[type-var]  # ty: ignore[unused-ignore-comment]
+        key: slice,
+    ) -> "TypedNDArray[tuple[int, *_ShapeRest], _DTypeT_co]": ...  # type: ignore[type-var]  # ty: ignore[unused-ignore-comment]
+    @overload
+    def __getitem__(
+        self: "TypedNDArray[tuple[int, *_ShapeRest], np.dtype[_ScalarT_co]]",  # type: ignore[type-var]  # ty: ignore[unused-ignore-comment]
+        key: tuple[int, *_ShapeRest],
+    ) -> _ScalarT_co: ...
+    @overload
+    def __getitem__(
+        self: "TypedNDArray[tuple[int, int, *_ShapeRest], _DTypeT_co]",  # type: ignore[type-var]  # ty: ignore[unused-ignore-comment]
+        key: tuple[int, slice],
+    ) -> "TypedNDArray[tuple[int, *_ShapeRest], _DTypeT_co]": ...  # type: ignore[type-var]  # ty: ignore[unused-ignore-comment]
+    @overload
+    def __getitem__(
+        self: "TypedNDArray[tuple[int, int, int, *_ShapeRest], _DTypeT_co]",  # type: ignore[type-var]  # ty: ignore[unused-ignore-comment]
+        key: tuple[int, int],
+    ) -> "TypedNDArray[tuple[int, *_ShapeRest], _DTypeT_co]": ...  # type: ignore[type-var]  # ty: ignore[unused-ignore-comment]
+    @overload
+    def __getitem__(self, key: Any) -> Any: ...
+    #
+    def __getitem__(self, key: Any) -> Any:  # pyright: ignore[reportIncompatibleMethodOverride]
+        return super().__getitem__(key)  # pyright: ignore[reportUnknownVariableType]
+
 
 ## Deferred shape binding
 
