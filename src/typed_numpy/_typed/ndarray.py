@@ -375,6 +375,11 @@ class TypedNDArray(np.ndarray[_ShapeT_co, _DTypeT_co]):
             dtype=dtype, order=order, casting=casting, subok=subok, copy=copy
         )
 
+    def flatten(
+        self, /, order: np._OrderKACF = "C"
+    ) -> "TypedNDArray[tuple[int], _DTypeT_co]":
+        return super().flatten(order=order)  # type: ignore[return-value]
+
 
 ## Deferred shape binding
 
