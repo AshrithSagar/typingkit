@@ -201,15 +201,16 @@ class TypedNDArray(np.ndarray[_ShapeT_co, _DTypeT_co]):
         # which is passed in to `__class_getitem__` as a `tuple[GenericAlias, GenericAlias]`.
         # Any other case would result in a static error already.
 
-        # We defer the arguments to `_NDShape`. It has two roles:
+        # We defer the arguments to `_TypedNDArrayGenericAlias` which is a subclass of `GenericAlias`. It has two roles:
         # 1. Support handling further partial binding just as the type system expects.
-        #   This is done through `_NDShape.__getitem__`.
-        # 2. Transfer the control back to `TypedNDArray` when its `_NDShape.__call__` method is called,
-        # which should then invoke `TypedNDArray.__new__`.
-        # Additionally we may use the bindings to perform runtime validation here.
+        #   This is done through `_TypedNDArrayGenericAlias.__getitem__` which just ensures that
+        #   `_TypedNDArrayGenericAlias` wraps the `GenericAlias` when partial binding.
+        # 2. Transfer the control back to `TypedNDArray` when its `_TypedNDArrayGenericAlias.__call__` method is called,
+        #   which should then invoke `TypedNDArray.__new__`.
+        #   Additionally we can use the bindings here to perform runtime validation.
 
         ga = super().__class_getitem__(item)
-        return _NDShape.from_generic_alias(ga)
+        return _TypedNDArrayGenericAlias.from_generic_alias(ga)
 
     # [FIXME]: Can we skip this method? It just uses
     #   `np.asarray(object, dtype=dtype).view(cls)`
@@ -304,7 +305,7 @@ class TypedNDArray(np.ndarray[_ShapeT_co, _DTypeT_co]):
 ## Deferred shape binding
 
 
-class _NDShape(GenericAlias):
+class _TypedNDArrayGenericAlias(GenericAlias):
     """
     Deferred TypedNDArray constructor for shapes with TypeVars.
     Enables progressive type specialization, behaving like a type-level curry.
@@ -325,7 +326,7 @@ class _NDShape(GenericAlias):
     ) -> TypedNDArray:
         # [NOTE] Should mimick `TypedNDArray.__new__` signature
 
-        base = get_origin(self)
+        base = cast(type[TypedNDArray], get_origin(self))
         args = get_args(self)
 
         if len(args) == 2:
