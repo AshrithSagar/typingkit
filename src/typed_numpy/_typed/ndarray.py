@@ -13,6 +13,7 @@ from typing import (
     Iterator,
     Literal,
     NoReturn,
+    Protocol,
     Self,
     TypeAlias,
     TypeVar,
@@ -22,6 +23,7 @@ from typing import (
     get_origin,
     overload,
 )
+from typing import Literal as L
 
 import numpy as np
 import numpy._typing as npt_
@@ -43,6 +45,12 @@ _NonObjectScalarT = TypeVar(
     "_NonObjectScalarT",
     bound=np.bool | np.number | np.flexible | np.datetime64 | np.timedelta64,
 )
+
+_ArrayT_co = TypeVar("_ArrayT_co", bound=np.ndarray, covariant=True)
+
+
+class _SupportsArray(Protocol[_ArrayT_co]):
+    def __array__(self, /) -> _ArrayT_co: ...
 
 
 ## Exceptions
@@ -215,18 +223,84 @@ class TypedNDArray(np.ndarray[_ShapeT_co, _DTypeT_co]):
     # [FIXME]: Can we skip this method? It just uses
     #   `np.asarray(object, dtype=dtype).view(cls)`
     #   all of which are regular `numpy`.
+    @overload
+    def __new__(  # type: ignore[misc]
+        cls,
+        object: np._ArrayT,
+        dtype: None = None,
+        *,
+        copy: bool | np._CopyMode | None = True,
+        order: np._OrderKACF = "K",
+        subok: L[True],
+        ndmin: int = 0,
+        like: npt_._SupportsArrayFunc | None = None,
+    ) -> np._ArrayT: ...
+    @overload
+    def __new__(  # type: ignore[misc]
+        cls,
+        object: _SupportsArray[np._ArrayT],
+        dtype: None = None,
+        *,
+        copy: bool | np._CopyMode | None = True,
+        order: np._OrderKACF = "K",
+        subok: L[True],
+        ndmin: L[0] = 0,
+        like: npt_._SupportsArrayFunc | None = None,
+    ) -> np._ArrayT: ...
+    @overload
     def __new__(
+        cls,
+        object: npt_._ArrayLike[np._ScalarT],
+        dtype: None = None,
+        *,
+        copy: bool | np._CopyMode | None = True,
+        order: np._OrderKACF = "K",
+        subok: bool = False,
+        ndmin: int = 0,
+        like: npt_._SupportsArrayFunc | None = None,
+    ) -> "TypedNDArray[_ShapeT_co, np.dtype[np._ScalarT]]": ...
+    @overload
+    def __new__(
+        cls,
+        object: Any,
+        dtype: npt_._DTypeLike[np._ScalarT],
+        *,
+        copy: bool | np._CopyMode | None = True,
+        order: np._OrderKACF = "K",
+        subok: bool = False,
+        ndmin: int = 0,
+        like: npt_._SupportsArrayFunc | None = None,
+    ) -> "TypedNDArray[_ShapeT_co, np.dtype[np._ScalarT]]": ...
+    @overload
+    def __new__(
+        cls,
+        object: Any,
+        dtype: npt.DTypeLike | None = None,
+        *,
+        copy: bool | np._CopyMode | None = True,
+        order: np._OrderKACF = "K",
+        subok: bool = False,
+        ndmin: int = 0,
+        like: npt_._SupportsArrayFunc | None = None,
+    ) -> "TypedNDArray[_ShapeT_co, np.dtype[Any]]": ...
+    #
+    def __new__(  # type: ignore[misc]
         cls,
         object: npt.ArrayLike,
         dtype: npt.DTypeLike | None = None,
-        # *,
-        # [TODO]: `numpy.array(...)` has other optional kwargs as well which are skipped for the time being.
-        #   ::{copy, order subok, ndmin, ndmax, like}
+        *,
+        copy: bool | np._CopyMode | None = True,
+        order: np._OrderKACF = "K",
+        subok: bool = False,
+        ndmin: int = 0,
+        like: npt_._SupportsArrayFunc | None = None,
     ) -> Self:
         # Overrides base; This doesn't follow `numpy.ndarray.__new__`,
         # but rather tries to mimick `numpy.array(...)`;
 
-        arr = np.asarray(object, dtype=dtype)
+        arr = np.array(
+            object, dtype, copy=copy, order=order, subok=subok, ndmin=ndmin, like=like
+        )
         # The regular `numpy.ndarray` machinery is put to use here,
         # basically making `TypedNDArray` just a type wrapper around it, just as intended.
 
@@ -323,6 +397,12 @@ class _TypedNDArrayGenericAlias(GenericAlias):
         self,
         object: npt.ArrayLike,
         dtype: npt.DTypeLike | None = None,
+        *,
+        copy: bool | np._CopyMode | None = True,
+        order: np._OrderKACF = "K",
+        subok: bool = False,
+        ndmin: int = 0,
+        like: npt_._SupportsArrayFunc | None = None,
     ) -> TypedNDArray:
         # [NOTE] Should mimick `TypedNDArray.__new__` signature
 
@@ -342,7 +422,9 @@ class _TypedNDArrayGenericAlias(GenericAlias):
             dtype = _resolve_dtype(dtype_spec)
 
         # Create `numpy.ndarray` object
-        arr = base(object, dtype=dtype)
+        arr = base(
+            object, dtype, copy=copy, order=order, subok=subok, ndmin=ndmin, like=like
+        )
 
         # Runtime shape validation
         shape_args = get_args(shape_spec)
