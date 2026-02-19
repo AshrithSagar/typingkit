@@ -540,6 +540,9 @@ dependencies = [
 ]
 
 [package.dev-dependencies]
+dev = [
+    { name = "rich" },
+]
 lint = [
     { name = "ruff" },
 ]
@@ -559,6 +562,7 @@ typecheck = [
 requires-dist = [{ name = "numpy", specifier = ">=2.2" }]
 
 [package.metadata.requires-dev]
+dev = [{ name = "rich", specifier = ">=14.3.2" }]
 lint = [{ name = "ruff", specifier = ">=0.15.1" }]
 test = [
     { name = "pytest", specifier = ">=9.0.2" },
