@@ -121,10 +121,11 @@ def _validate_shape(expected: _AnyShape, actual: _Shape) -> None:
 
         # Literal
         if origin is Literal:
-            literal_value = get_args(exp)[0]
-            if act != literal_value:
+            args = get_args(exp)
+            if act not in args:
+                expected_str = f"{args[0]}" if len(args) == 1 else f"one of {set(args)}"
                 raise DimensionError(
-                    f"Dimension {idx}: expected {literal_value}, got {act}"
+                    f"Dimension {idx}: expected {expected_str}, got {act}"
                 )
 
         # TypeVar
@@ -195,7 +196,7 @@ class TypedNDArray(np.ndarray[_ShapeT_co, _DTypeT_co]):
         # Stronger type promotion; numpy.ndarray types it as `Any`;
         # The typing doesn't matter here really, since `GenericAlias` is intended as a runtime construct.
         # We try to include the possible runtime types here.
-        GenericAlias | tuple[GenericAlias, GenericAlias],
+        GenericAlias | TypeVar | tuple[GenericAlias | TypeVar, GenericAlias | TypeVar],
         /,
     ) -> Any:  # Overrides base; This should actually return a `GenericAlias`, strictly speaking;
         # [HACK] Misuses __class_getitem__
@@ -328,7 +329,7 @@ class _NDShape:
     def __init__(
         self,
         base: type[TypedNDArray],
-        shape_spec: GenericAlias,
+        shape_spec: GenericAlias | TypeVar,
         dtype_spec: GenericAlias | TypeVar = GenericAlias(np.dtype, Any),
     ):
         self.base = base
