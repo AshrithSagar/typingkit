@@ -241,5 +241,5 @@ class TestDTypeTypeVar:
         Array = TypedNDArray[tuple[THREE], np.dtype[T]]
         Array_i32 = Array[np.int32]
 
-        arr = Array_i32([1, 2, 3])
+        arr = Array_i32([1, 2, 3], dtype=np.int32)
         assert arr.dtype == np.int32

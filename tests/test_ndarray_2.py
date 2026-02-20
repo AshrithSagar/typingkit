@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 from typed_numpy._typed.helpers import FIVE, FOUR, ONE, THREE, TWO
-from typed_numpy._typed.ndarray import RankError, ShapeError, TypedNDArray
+from typed_numpy._typed.ndarray import DTypeError, RankError, ShapeError, TypedNDArray
 
 N = TypeVar("N", bound=int, default=int)
 M = TypeVar("M", bound=int, default=int)
@@ -44,12 +44,12 @@ class TestDTypeSpecification:
 
     def test_int32_dtype(self) -> None:
         Array3 = TypedNDArray[tuple[THREE], np.dtype[np.int32]]
-        arr = Array3([1, 2, 3])
+        arr = Array3([1, 2, 3], dtype=np.int32)
         assert arr.dtype == np.int32
 
     def test_float64_dtype(self) -> None:
         Array3 = TypedNDArray[tuple[THREE], np.dtype[np.float64]]
-        arr = Array3([1, 2, 3])
+        arr = Array3([1, 2, 3], dtype=np.float64)
         assert arr.dtype == np.float64
 
     def test_complex_dtype(self) -> None:
@@ -65,8 +65,8 @@ class TestDTypeSpecification:
     def test_dtype_override_in_call(self) -> None:
         Array3 = TypedNDArray[tuple[THREE], np.dtype[np.int32]]
         # Override dtype in call
-        arr = Array3([1.5, 2.5, 3.5], dtype=np.float64)
-        assert arr.dtype == np.float64
+        with pytest.raises(DTypeError):
+            Array3([1.5, 2.5, 3.5], dtype=np.float64)
 
 
 class TestShapeValidationErrors:

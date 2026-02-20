@@ -55,7 +55,7 @@ class TestTypedNDArrayCreation:
         assert arr.shape == (3,)
 
     def test_create_with_dtype(self) -> None:
-        arr = TypedNDArray[_Shape, np.dtype[np.float32]]([1, 2, 3])
+        arr = TypedNDArray[_Shape, np.dtype[np.float32]]([1, 2, 3], dtype=np.float32)
         assert arr.dtype == np.float32
 
 
@@ -69,7 +69,7 @@ class TestTypedNDArrayClassGetitem:
 
     def test_shape_with_dtype(self) -> None:
         Array2x2 = TypedNDArray[tuple[TWO, TWO], np.dtype[np.float32]]
-        arr = Array2x2([[1.0, 2.0], [3.0, 4.0]])
+        arr = Array2x2([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
         assert arr.shape == (2, 2)
         assert arr.dtype == np.float32
 
@@ -186,7 +186,7 @@ class TestVariadicShapes:
     def test_variadic_with_dtype(self) -> None:
         ArrayAllTwoFloat = TypedNDArray[tuple[TWO, ...], np.dtype[np.float32]]
 
-        arr = ArrayAllTwoFloat([[1.0, 2.0], [3.0, 4.0]])
+        arr = ArrayAllTwoFloat([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
         assert arr.shape == (2, 2)
         assert arr.dtype == np.float32
 
