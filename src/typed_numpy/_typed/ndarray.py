@@ -7,7 +7,7 @@ NDArray
 # pyright: reportPrivateUsage = false
 
 import builtins
-from types import GenericAlias
+from types import GenericAlias, UnionType
 from typing import (
     Any,
     Iterator,
@@ -68,38 +68,68 @@ class DimensionError(ShapeError):
     """Raised when some dimension doesn't match expected."""
 
 
-## Resolution & Validation
+class DTypeError(Exception):
+    """Raised when array dtype doesn't match expected dtype."""
 
 
-def _resolve_dtype(
-    dtype_spec: GenericAlias | TypeVar | np.generic,
-) -> npt.DTypeLike | None:
-    """Resolve dtype at runtime."""
+## Runtime validation
 
-    match dtype_spec:
-        # Case 1: np.dtype[T]
-        case GenericAlias() as ga if get_origin(ga) is np.dtype:
-            args = get_args(ga)
-            if not args:
+
+def _validate_dtype(
+    expected: GenericAlias | TypeVar | type[np.dtype], actual: np.dtype
+) -> None:
+    """
+    Validate dtype at runtime.
+
+    ### References:
+    - https://numpy.org/doc/stable/reference/arrays.dtypes.html#checking-the-data-type
+    """
+
+    # ~TypeVar
+    if isinstance(expected, TypeVar):
+        # [TODO] Verify bounds, contraints, default
+        return None
+
+    # np.dtype[...]
+    if isinstance(expected, GenericAlias):
+        if get_origin(expected) is np.dtype:
+            if not (args := get_args(expected)):
                 return None
-            inner = args[0]
-            match inner:
-                # np.dtype[<subclass of np.generic>]
-                case t if isinstance(t, type) and issubclass(t, np.generic):
-                    return np.dtype(t)  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
-                # np.dtype[TypeVar]
-                case TypeVar():
-                    return None
-                case _:
-                    return None
-        # Case 2: bare TypeVar
-        case TypeVar():
-            return None
-        # Case 3: direct scalar type
-        case np.generic() as t:
-            return t
-        case _:
-            return None
+            assert len(args) == 1
+            exp = args[0]
+
+            # np.dtype[Any]
+            if exp is Any:
+                return None
+
+            # np.dtype[~TypeVar]
+            elif isinstance(exp, TypeVar):
+                # [TODO] Verify bounds, contraints, default
+                return None
+
+            # np.dtype[A | B | ...]
+            elif get_origin(exp) is UnionType:
+                args = get_args(exp)
+                for arg in args:
+                    if actual == arg:
+                        break
+                    if isinstance(arg, TypeVar):
+                        return None
+                else:
+                    raise DTypeError(f"expected {exp}, got {actual}")
+
+            # np.dtype[<subclass of np.generic>]
+            else:
+                if actual != exp:
+                    raise DTypeError(f"expected {exp.__name__}, got {actual}")
+        else:
+            raise TypeError(f"Invalid dtype specification. {expected} is not a dtype")
+
+    # <class np.dtype>
+    if expected is np.dtype:
+        return None
+
+    return None  # Fallback
 
 
 def _validate_shape(expected: _AnyShape, actual: _Shape) -> None:
@@ -260,6 +290,7 @@ class TypedNDArray(np.ndarray[_ShapeT_co, _DTypeT_co]):
         like: npt_._SupportsArrayFunc | None = None,
     ) -> "TypedNDArray[_ShapeT_co, np.dtype[np._ScalarT]]": ...
     @overload
+    # NOTE: This is prolly the best we can do without HKTs
     def __new__(
         cls,
         object: Any,
@@ -288,6 +319,7 @@ class TypedNDArray(np.ndarray[_ShapeT_co, _DTypeT_co]):
         cls,
         object: npt.ArrayLike,
         dtype: npt.DTypeLike | None = None,
+        # NOTE: This is prolly the best we can do without HKTs
         *,
         copy: bool | np._CopyMode | None = True,
         order: np._OrderKACF = "K",
@@ -453,23 +485,21 @@ class _TypedNDArrayGenericAlias(GenericAlias):
             shape_spec, dtype_spec = args
         elif len(args) == 1:
             (shape_spec,) = args
-            dtype_spec = GenericAlias(np.dtype, Any)
+            dtype_spec = _DTypeT_co.__default__
             # The `dtype_spec` default here should match the default in `_DTypeT_co`.
         else:
             raise TypeError
-
-        if dtype is None:
-            dtype = _resolve_dtype(dtype_spec)
 
         # Create `numpy.ndarray` object
         arr = base(
             object, dtype, copy=copy, order=order, subok=subok, ndmin=ndmin, like=like
         )
 
-        # Runtime shape validation
+        # Runtime validations
         shape_args = get_args(shape_spec)
-        arr_shape = arr.shape
+        arr_shape, arr_dtype = arr.shape, arr.dtype
         _validate_shape(shape_args, arr_shape)
         _validate_shape_against_contexts(shape_args, arr_shape)
+        _validate_dtype(dtype_spec, arr_dtype)
 
         return arr.view(TypedNDArray)
