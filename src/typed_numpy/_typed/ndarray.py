@@ -123,6 +123,7 @@ def _validate_dtype(
                 if actual != exp:
                     raise DTypeError(f"expected {exp.__name__}, got {actual}")
         else:
+            # [TODO]: Handle typing.Annotated
             raise TypeError(f"Invalid dtype specification. {expected} is not a dtype")
 
     # <class np.dtype>

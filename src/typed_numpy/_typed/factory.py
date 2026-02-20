@@ -32,10 +32,14 @@ class _ShapeBuilder(Generic[_ShapeT, _ScalarT]):
     def __call__(
         self, object: npt.ArrayLike
     ) -> TypedNDArray[_ShapeT, np.dtype[_ScalarT]]:
-        return TypedNDArray[self._shape_spec, self._dtype_spec](object)  # type: ignore
+        dtype = self._dtype_spec.__args__[0]
+        dtype = None if dtype is Any else dtype
+        return TypedNDArray[self._shape_spec](object, dtype)  # type: ignore
 
     def __repr__(self) -> str:
         return f"TypedNDArrayFactory[{self._shape_spec.__args__}, {self._dtype_spec.__args__[0]}]"
+
+    ## Convenience helpers
 
     @property
     def float64(self) -> "_ShapeBuilder[_ShapeT, np.float64]":
@@ -58,6 +62,10 @@ class _ShapeFactory:
         shape_spec = GenericAlias(tuple, dims)
         dtype_spec = GenericAlias(np.dtype, (Any,))
         return _ShapeBuilder(shape_spec, dtype_spec)
+
+    # Prefer [...] rather than (...), but this is also provided
+    def __call__(self, dims: _ShapeT) -> _ShapeBuilder[_ShapeT, Any]:
+        return self.__getitem__(dims)
 
 
 Shaped = _ShapeFactory()
