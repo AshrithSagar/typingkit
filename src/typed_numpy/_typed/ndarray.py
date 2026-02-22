@@ -498,6 +498,7 @@ class _TypedNDArrayGenericAlias(GenericAlias):
 
         # Runtime validations
         shape_args = get_args(shape_spec)
+        # [TODO]: Handle TypeAliasType
         arr_shape, arr_dtype = arr.shape, arr.dtype
         _validate_shape(shape_args, arr_shape)
         _validate_shape_against_contexts(shape_args, arr_shape)
