@@ -112,8 +112,8 @@ Log10 = Log[Arg1, Literal[10]]
 
 
 def _resolve_dim(tp: Any) -> Any:
-    # TypeVar
-    if isinstance(tp, TypeVar):
+    # type[Any] / type[int] / EllipsisType / TypeVar
+    if tp is Any or tp is int or tp is Ellipsis or isinstance(tp, TypeVar):
         return tp
 
     origin = get_origin(tp)

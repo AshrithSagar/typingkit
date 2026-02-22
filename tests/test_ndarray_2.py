@@ -345,7 +345,9 @@ class TestErrorMessages:
             Array3x4(np.ones((3, 5)))
 
         error_msg = str(exc_info.value)
-        assert "Dimension 1: expected 4, got 5" in error_msg
+        assert "Shape mismatch" in error_msg
+        assert "expected (3, 4)" in error_msg
+        assert "got (3, 5)" in error_msg
 
     def test_dimension_error_message_content(self) -> None:
         ArrayN = TypedNDArray[tuple[N]]

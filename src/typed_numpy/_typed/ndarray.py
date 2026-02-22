@@ -137,14 +137,7 @@ def _resolve_shape(args: _AnyShape) -> _AnyShape:
     from typed_numpy._typed.dimexpr import _resolve_dim
 
     # [TODO]: Handle TypeAliasType
-    shape = list(args)
-    for i, arg in enumerate(shape):
-        dim = _resolve_dim(arg)
-        if isinstance(dim, int):
-            shape[i] = dim
-        else:
-            shape[i] = Any
-    return tuple(shape)
+    return tuple(_resolve_dim(arg) for arg in args)
 
 
 def _validate_shape(expected: _AnyShape, actual: _Shape) -> None:
