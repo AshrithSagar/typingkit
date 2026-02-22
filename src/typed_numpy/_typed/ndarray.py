@@ -133,6 +133,20 @@ def _validate_dtype(
     return None  # Fallback
 
 
+def _resolve_shape(args: _AnyShape) -> _AnyShape:
+    from typed_numpy._typed.dimexpr import _resolve_dim
+
+    # [TODO]: Handle TypeAliasType
+    shape = list(args)
+    for i, arg in enumerate(shape):
+        dim = _resolve_dim(arg)
+        if isinstance(dim, int):
+            shape[i] = dim
+        else:
+            shape[i] = Any
+    return tuple(shape)
+
+
 def _validate_shape(expected: _AnyShape, actual: _Shape) -> None:
     """Validate shapes at runtime."""
 
@@ -497,8 +511,7 @@ class _TypedNDArrayGenericAlias(GenericAlias):
         )
 
         # Runtime validations
-        shape_args = get_args(shape_spec)
-        # [TODO]: Handle TypeAliasType
+        shape_args = _resolve_shape(get_args(shape_spec))
         arr_shape, arr_dtype = arr.shape, arr.dtype
         _validate_shape(shape_args, arr_shape)
         _validate_shape_against_contexts(shape_args, arr_shape)

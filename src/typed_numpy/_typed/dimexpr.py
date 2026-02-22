@@ -111,7 +111,7 @@ Log10 = Log[Arg1, Literal[10]]
 ## Evaluation
 
 
-def resolve_dim(tp: Any) -> Any:
+def _resolve_dim(tp: Any) -> Any:
     # TypeVar
     if isinstance(tp, TypeVar):
         return tp
@@ -125,7 +125,7 @@ def resolve_dim(tp: Any) -> Any:
 
     # TypeAliasType
     if isinstance(origin, TypeAliasType):
-        return resolve_dim(origin.__value__[get_args(tp)])
+        return _resolve_dim(origin.__value__[get_args(tp)])
 
     # DimExpr
     if origin and issubclass(origin, DimExpr):
@@ -133,7 +133,7 @@ def resolve_dim(tp: Any) -> Any:
 
         # Case 1: class defines its own expr
         if "expr" in origin.__dict__:
-            values = tuple(resolve_dim(arg) for arg in args)
+            values = tuple(_resolve_dim(arg) for arg in args)
             if not all(isinstance(v, int) for v in values):
                 return origin[values]  # pyright: ignore[reportInvalidTypeArguments]
             return origin.expr(values)
@@ -149,6 +149,6 @@ def resolve_dim(tp: Any) -> Any:
                     param_map = dict(zip(parameters, args))
                     substituted = tuple(param_map.get(a, a) for a in base_args)
 
-                    return resolve_dim(base_origin[substituted])  # pyright: ignore[reportInvalidTypeArguments]
+                    return _resolve_dim(base_origin[substituted])  # pyright: ignore[reportInvalidTypeArguments]
 
     raise TypeError(f"Cannot evaluate {tp}")
