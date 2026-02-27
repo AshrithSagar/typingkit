@@ -9,6 +9,7 @@ import numbers
 from types import GenericAlias
 from typing import (
     Any,
+    Callable,
     Generic,
     Literal,
     Self,
@@ -119,9 +120,16 @@ class TypedList(Generic[Length, Item], list[Item]):
 
     @classmethod
     def full(
-        cls: "type[TypedList[Length, Item]]", length: Length, fill_value: Item
+        cls: "type[TypedList[Length, Item]]",
+        length: Length,
+        fill_value: Item | Callable[[int], Item],
     ) -> "TypedList[Length, Item]":
-        return cls([copy.deepcopy(fill_value) for _ in range(length)])
+        data: list[Item]
+        if callable(fill_value):
+            data = [cast(Item, fill_value(i)) for i in range(length)]
+        else:
+            data = [copy.deepcopy(fill_value) for _ in range(length)]
+        return cls(data)
 
 
 class _TypedListGenericAlias(GenericAlias):
