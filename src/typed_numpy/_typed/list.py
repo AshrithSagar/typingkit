@@ -6,6 +6,7 @@ TypedList
 
 import copy
 import numbers
+from collections.abc import Iterable, Sequence
 from types import GenericAlias, NoneType, UnionType
 from typing import (
     Any,
@@ -13,7 +14,6 @@ from typing import (
     Generic,
     Literal,
     Self,
-    Sequence,
     TypeVar,
     cast,
     get_args,
@@ -154,7 +154,7 @@ def _validate_length(object: Sequence[Item], length: Any) -> None:
     return None  # Fallback
 
 
-def _validate_item(object: Sequence[Item], item_type: Any) -> None:
+def _validate_item(object: Iterable[Item], item_type: Any) -> None:
     if not TypedListConfig.VALIDATE_ITEM:
         return
 
@@ -213,7 +213,7 @@ class _TypedListGenericAlias(GenericAlias):
         ga = super().__getitem__(typeargs)
         return type(self).from_generic_alias(ga)
 
-    def __call__(self, object: Sequence[Item] | None = None, /) -> TypedList:
+    def __call__(self, iterable: Iterable[Item] | None = None, /) -> TypedList:
         # [NOTE] Should mimick `TypedList.__new__` signature
 
         base = cast(type[TypedList], get_origin(self))
@@ -229,7 +229,7 @@ class _TypedListGenericAlias(GenericAlias):
             raise TypeError
 
         # Create `list` object
-        data = base(object) if object is not None else base()
+        data = base(iterable) if iterable is not None else base()
 
         # Runtime validations
         _validate_length(data, length)
