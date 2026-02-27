@@ -4,6 +4,7 @@ TypedList
 """
 # src/typed_numpy/_typed/list.py
 
+import copy
 import numbers
 from types import GenericAlias
 from typing import (
@@ -88,7 +89,7 @@ def _validate_length(object: Sequence[Item], length: int | TypeVar | None) -> No
         raise LengthError(f"Length mismatch: expected {length}, got {actual}")
 
 
-def _validate_item(object: Sequence[Item], item_type: type) -> None:
+def _validate_item(object: Sequence[Item], item_type: Any) -> None:
     if not TypedListConfig.VALIDATE_ITEM:
         return
 
@@ -115,6 +116,12 @@ class TypedList(Generic[Length, Item], list[Item]):
     @property
     def length(self) -> Length:
         return self.__len__()
+
+    @classmethod
+    def full(
+        cls: "type[TypedList[Length, Item]]", length: Length, fill_value: Item
+    ) -> "TypedList[Length, Item]":
+        return cls([copy.deepcopy(fill_value) for _ in range(length)])
 
 
 class _TypedListGenericAlias(GenericAlias):
