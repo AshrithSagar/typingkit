@@ -152,7 +152,7 @@ class _TypedListGenericAlias(GenericAlias):
         ga = super().__getitem__(typeargs)
         return type(self).from_generic_alias(ga)
 
-    def __call__(self, object: Sequence[Item], /) -> TypedList:
+    def __call__(self, object: Sequence[Item] | None = None, /) -> TypedList:
         # [NOTE] Should mimick `TypedList.__new__` signature
 
         base = cast(type[TypedList], get_origin(self))
@@ -168,7 +168,7 @@ class _TypedListGenericAlias(GenericAlias):
             raise TypeError
 
         # Create `list` object
-        data = base(object)
+        data = base(object) if object is not None else base()
 
         # Runtime validations
         _validate_length(data, length)
