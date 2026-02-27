@@ -64,7 +64,10 @@ def _is_assignable(value: Any, expected_type: type) -> bool:
         return isinstance(value, numbers.Real)
     if expected_type is int:
         return isinstance(value, numbers.Integral)
-    return isinstance(value, expected_type)
+    try:
+        return isinstance(value, expected_type)
+    except Exception:
+        return False
 
 
 def _validate_length(object: Sequence[Item], length: int | TypeVar | None) -> None:
