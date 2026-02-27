@@ -38,6 +38,21 @@ class ItemError(Exception):
 ## Runtime validation
 
 
+class TypedListConfig:
+    VALIDATE_LENGTH: bool = True
+    VALIDATE_ITEM: bool = True
+
+    @classmethod
+    def enable_all(cls):
+        cls.VALIDATE_LENGTH = True
+        cls.VALIDATE_ITEM = True
+
+    @classmethod
+    def disable_all(cls):
+        cls.VALIDATE_LENGTH = False
+        cls.VALIDATE_ITEM = False
+
+
 def _is_assignable(value: Any, expected_type: type) -> bool:
     if expected_type is Any:
         return True
@@ -51,6 +66,9 @@ def _is_assignable(value: Any, expected_type: type) -> bool:
 
 
 def _validate_length(object: Sequence[Item], length: int | TypeVar | None) -> None:
+    if not TypedListConfig.VALIDATE_LENGTH:
+        return None
+
     origin = get_origin(length)
 
     # Literal[N]
@@ -71,6 +89,9 @@ def _validate_length(object: Sequence[Item], length: int | TypeVar | None) -> No
 
 
 def _validate_item(object: Sequence[Item], item_type: type) -> None:
+    if not TypedListConfig.VALIDATE_ITEM:
+        return
+
     for index, item in enumerate(object):
         if not _is_assignable(item, item_type):
             raise ItemError(
