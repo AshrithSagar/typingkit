@@ -88,6 +88,13 @@ class TypedList(Generic[Length, Item], list[Item]):
         ga = super().__class_getitem__(item)
         return _TypedListGenericAlias.from_generic_alias(ga)
 
+    def __len__(self) -> Length:
+        return cast(Length, super().__len__())
+
+    @property
+    def length(self) -> Length:
+        return self.__len__()
+
 
 class _TypedListGenericAlias(GenericAlias):
     """
