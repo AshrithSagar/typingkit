@@ -65,6 +65,9 @@ def _is_assignable(value: Any, expected_type: type) -> bool:
     if expected_type is int:
         return isinstance(value, numbers.Integral)
     try:
+        origin = get_origin(expected_type)
+        if origin is not None:
+            return isinstance(value, origin)
         return isinstance(value, expected_type)
     except Exception:
         return False
