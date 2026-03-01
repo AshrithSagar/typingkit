@@ -8,17 +8,9 @@ import copy
 import numbers
 from collections.abc import Iterable, Sequence
 from types import GenericAlias, NoneType, UnionType
-from typing import (
-    Any,
-    Callable,
-    Generic,
-    Literal,
-    Self,
-    TypeVar,
-    cast,
-    get_args,
-    get_origin,
-)
+from typing import Any, Callable, Literal, Self, TypeVar, cast, get_args, get_origin
+
+from typed_numpy._typed.generics import RuntimeGeneric
 
 ## Typings
 
@@ -169,14 +161,26 @@ def _validate_item(object: Iterable[Item], item_type: Any) -> None:
 
 
 ## TypedList
-class TypedList(Generic[Length, Item], list[Item]):
+class TypedList(RuntimeGeneric[Length, Item], list[Item]):
     @classmethod
-    def __class_getitem__(cls, item: Any, /) -> GenericAlias:
-        # [HACK] Misuses __class_getitem__
-        # See https://docs.python.org/3/reference/datamodel.html#the-purpose-of-class-getitem
+    def __pre_new__(cls, alias: GenericAlias, *args: Any, **kwargs: Any) -> Self:
+        # Create `list` object
+        obj = super().__pre_new__(alias, *args, **kwargs)
 
-        ga = super().__class_getitem__(item)
-        return _TypedListGenericAlias.from_generic_alias(ga)
+        ## Runtime validations
+        typeargs = get_args(alias)
+        if len(typeargs) == 2:
+            length, item_type = typeargs
+        elif len(typeargs) == 1:
+            (length,) = typeargs
+            item_type = Item.__default__  # type: ignore[misc]
+            # The `item_type` default here should match the default in `Item`.
+        else:
+            raise TypeError
+        _validate_length(obj, length)
+        _validate_item(obj, item_type)
+
+        return obj
 
     def __len__(self) -> Length:
         return cast(Length, super().__len__())
@@ -200,33 +204,3 @@ class TypedList(Generic[Length, Item], list[Item]):
         else:
             data = [copy.deepcopy(fill_value) for _ in range(length)]
         return cls(data)
-
-
-class _TypedListGenericAlias(GenericAlias):
-    @classmethod
-    def from_generic_alias(cls, alias: GenericAlias) -> Self:
-        return cls(alias.__origin__, alias.__args__)  # pyright: ignore[reportArgumentType]
-
-    def __getitem__(self, typeargs: Any) -> Self:
-        ga = super().__getitem__(typeargs)
-        return type(self).from_generic_alias(ga)
-
-    def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        # Create `list` object
-        origin = get_origin(self)
-        obj = origin(*args, **kwargs)
-
-        ## Runtime validations
-        typeargs = get_args(self)
-        if len(typeargs) == 2:
-            length, item_type = typeargs
-        elif len(typeargs) == 1:
-            (length,) = typeargs
-            item_type = Item.__default__
-            # The `item_type` default here should match the default in `Item`.
-        else:
-            raise TypeError
-        _validate_length(obj, length)
-        _validate_item(obj, item_type)
-
-        return obj
