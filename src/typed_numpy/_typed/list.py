@@ -203,11 +203,6 @@ class TypedList(Generic[Length, Item], list[Item]):
 
 
 class _TypedListGenericAlias(GenericAlias):
-    """
-    Deferred TypedNDArray constructor for shapes with TypeVars.
-    Enables progressive type specialization, behaving like a type-level curry.
-    """
-
     @classmethod
     def from_generic_alias(cls, alias: GenericAlias) -> Self:
         return cls(alias.__origin__, alias.__args__)  # pyright: ignore[reportArgumentType]
@@ -216,26 +211,22 @@ class _TypedListGenericAlias(GenericAlias):
         ga = super().__getitem__(typeargs)
         return type(self).from_generic_alias(ga)
 
-    def __call__(self, iterable: Iterable[Item] | None = None, /) -> TypedList:
-        # [NOTE] Should mimick `TypedList.__new__` signature
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        # Create `list` object
+        origin = get_origin(self)
+        obj = origin(*args, **kwargs)
 
-        base = cast(type[TypedList], get_origin(self))
-        args = get_args(self)
-
-        if len(args) == 2:
-            length, item_type = args
-        elif len(args) == 1:
-            (length,) = args
-            item_type = Item.__default__  # type: ignore[misc]
+        ## Runtime validations
+        typeargs = get_args(self)
+        if len(typeargs) == 2:
+            length, item_type = typeargs
+        elif len(typeargs) == 1:
+            (length,) = typeargs
+            item_type = Item.__default__
             # The `item_type` default here should match the default in `Item`.
         else:
             raise TypeError
+        _validate_length(obj, length)
+        _validate_item(obj, item_type)
 
-        # Create `list` object
-        data = base(iterable) if iterable is not None else base()
-
-        # Runtime validations
-        _validate_length(data, length)
-        _validate_item(data, item_type)
-
-        return data
+        return obj
