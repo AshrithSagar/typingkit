@@ -1,6 +1,6 @@
 [project]
 name = "typed-numpy"
-version = "0.2.1"
+version = "0.2.2"
 description = "Typed NumPy with static shape typing and runtime shape validation."
 readme = "README.md"
 authors = [{ name = "Ashrith Sagar", email = "ashrith9sagar@gmail.com" }]
