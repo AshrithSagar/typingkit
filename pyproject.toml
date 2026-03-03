@@ -1,7 +1,7 @@
 [project]
-name = "typed-numpy"
+name = "typingkit"
 version = "0.2.2"
-description = "Typed NumPy with static shape typing and runtime shape validation."
+description = "Python strong typing suite, along with Typed NumPy: Static shape typing and runtime shape validation."
 readme = "README.md"
 authors = [{ name = "Ashrith Sagar", email = "ashrith9sagar@gmail.com" }]
 requires-python = ">=3.13"

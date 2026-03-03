@@ -1,8 +1,8 @@
-# typed-numpy
+# typingkit
 
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
-Typed NumPy with static shape typing and runtime shape validation.
+Python strong typing suite, along with Typed NumPy: Static shape typing and runtime shape validation.
 
 > [!WARNING]
 > Experimental & WIP.
@@ -39,16 +39,16 @@ Install the package from the PyPI release:
 
 ```shell
 # Using uv
-uv add typed-numpy
+uv add typingkit
 
 # Or with pip
-pip3 install typed-numpy
+pip3 install typingkit
 ```
 
 To install from the latest commit:
 
 ```shell
-uv add git+https://github.com/AshrithSagar/typed-numpy.git@main
+uv add git+https://github.com/AshrithSagar/typingkit.git@main
 ```
 
 </details>
