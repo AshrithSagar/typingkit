@@ -2,7 +2,7 @@
 TypedList
 =======
 """
-# src/typed_numpy/_typed/list.py
+# src/typingkit/_typed/list.py
 
 import copy
 import numbers
@@ -10,7 +10,7 @@ from collections.abc import Iterable, Sequence
 from types import GenericAlias, NoneType, UnionType
 from typing import Any, Callable, Literal, Self, TypeVar, cast, get_args, get_origin
 
-from typed_numpy._typed.generics import RuntimeGeneric
+from typingkit._typed.generics import RuntimeGeneric
 
 ## Typings
 

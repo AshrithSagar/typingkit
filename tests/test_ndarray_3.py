@@ -11,9 +11,9 @@ from typing import Literal, TypeVar
 import numpy as np
 import pytest
 
-from typed_numpy._typed.context import enforce_shapes
-from typed_numpy._typed.helpers import FIVE, THREE, TWO
-from typed_numpy._typed.ndarray import DimensionError, ShapeError, TypedNDArray
+from typingkit._typed.context import enforce_shapes
+from typingkit._typed.helpers import FIVE, THREE, TWO
+from typingkit._typed.ndarray import DimensionError, ShapeError, TypedNDArray
 
 N = TypeVar("N", bound=int, default=int)
 M = TypeVar("M", bound=int, default=int)

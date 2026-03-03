@@ -12,8 +12,8 @@ from typing import TypeVar
 import numpy as np
 import pytest
 
-from typed_numpy._typed.helpers import FIVE, FOUR, THREE, TWO
-from typed_numpy._typed.ndarray import (
+from typingkit._typed.helpers import FIVE, FOUR, THREE, TWO
+from typingkit._typed.ndarray import (
     RankError,
     ShapeError,
     TypedNDArray,

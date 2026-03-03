@@ -58,7 +58,7 @@ uv add git+https://github.com/AshrithSagar/typingkit.git@main
 ```python
 from typing import TypeVar
 
-from typed_numpy._typed.ndarray import TypedNDArray
+from typingkit._typed.ndarray import TypedNDArray
 
 # Shape variables are just regular TypeVar's
 N = TypeVar("N", bound=int, default=int)

@@ -15,8 +15,8 @@ from typing import Generic, Literal, TypeAlias, TypeVar, reveal_type
 import numpy as np
 import numpy.typing as npt
 
-from typed_numpy._typed import TypedNDArray
-from typed_numpy._typed.context import enforce_shapes
+from typingkit._typed import TypedNDArray
+from typingkit._typed.context import enforce_shapes
 ```
 
 </details>

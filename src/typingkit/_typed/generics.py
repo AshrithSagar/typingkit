@@ -2,7 +2,7 @@
 Generics
 =======
 """
-# src/typed_numpy/_typed/generics.py
+# src/typingkit/_typed/generics.py
 
 from types import GenericAlias
 from typing import Any, Generic, Self, TypeVarTuple, Unpack, cast, get_args, get_origin

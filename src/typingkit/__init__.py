@@ -2,7 +2,7 @@
 Typed NumPy
 =======
 """
-# src/typed_numpy/__init__.py
+# src/typingkit/__init__.py
 
 import numpy
 
