@@ -3,7 +3,7 @@ Context binding
 =======
 Manages TypeVar binding contexts for shape validation.
 """
-# src/typingkit/_typed/context.py
+# src/typingkit/numpy/_typed/context.py
 
 # pyright: reportPrivateUsage = false
 
@@ -21,7 +21,7 @@ from typing import (
     get_type_hints,
 )
 
-from typingkit._typed.ndarray import (
+from typingkit.numpy._typed.ndarray import (
     DimensionError,
     _validate_shape,
     _validate_shape_against_contexts,

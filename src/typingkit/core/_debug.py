@@ -2,7 +2,7 @@
 Debugging utilities
 =======
 """
-# src/typingkit/_typed/debug.py
+# src/typingkit/core/_debug.py
 
 from typing import Any, TypeVar, get_args, get_origin
 

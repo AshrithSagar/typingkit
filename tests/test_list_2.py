@@ -10,7 +10,7 @@ from typing import Any, Literal, TypeVar
 
 import pytest
 
-from typingkit._typed.list import ItemError, LengthError, TypedList, TypedListConfig
+from typingkit.core.list import ItemError, LengthError, TypedList, TypedListConfig
 
 
 class TestDeferredBinding:

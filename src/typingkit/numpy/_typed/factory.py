@@ -2,7 +2,7 @@
 Shape factory for TypedNDArray
 =======
 """
-# src/typingkit/_typed/factory.py
+# src/typingkit/numpy/_typed/factory.py
 
 # pyright: reportPrivateUsage = false
 
@@ -12,7 +12,7 @@ from typing import Any, Generic, TypeVar
 import numpy as np
 import numpy.typing as npt
 
-from typingkit._typed.ndarray import TypedNDArray, _AnyShape
+from typingkit.numpy._typed.ndarray import TypedNDArray, _AnyShape
 
 _ShapeT = TypeVar("_ShapeT", bound=_AnyShape)
 _ScalarT = TypeVar("_ScalarT", bound=np.generic)

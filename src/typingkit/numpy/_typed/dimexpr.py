@@ -2,7 +2,7 @@
 DimExpr
 =======
 """
-# src/typingkit/_typed/dimexpr.py
+# src/typingkit/numpy/_typed/dimexpr.py
 
 import math
 from typing import (

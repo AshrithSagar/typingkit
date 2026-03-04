@@ -10,7 +10,7 @@ from typing import Literal, TypeVar
 
 import pytest
 
-from typingkit._typed.list import ItemError, LengthError, TypedList
+from typingkit.core.list import ItemError, LengthError, TypedList
 
 
 class TestBasicCreation:

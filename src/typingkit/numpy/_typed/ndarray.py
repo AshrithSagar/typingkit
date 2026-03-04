@@ -2,7 +2,7 @@
 NDArray
 =======
 """
-# src/typingkit/_typed/ndarray.py
+# src/typingkit/numpy/_typed/ndarray.py
 
 # pyright: reportPrivateUsage = false
 
@@ -134,7 +134,7 @@ def _validate_dtype(
 
 
 def _resolve_shape(args: _AnyShape) -> _AnyShape:
-    from typingkit._typed.dimexpr import _resolve_dim
+    from typingkit.numpy._typed.dimexpr import _resolve_dim
 
     # [TODO]: Handle TypeAliasType
     return tuple(_resolve_dim(arg) for arg in args)
@@ -199,7 +199,7 @@ def _validate_shape(expected: _AnyShape, actual: _Shape) -> None:
 
 def _validate_shape_against_contexts(shape_spec: _AnyShape, actual: _Shape) -> None:
     """Validate shape against active TypeVar contexts (class-level and method-level)."""
-    from typingkit._typed.context import (
+    from typingkit.numpy._typed.context import (
         _active_class_context,
         _method_typevar_context,
     )

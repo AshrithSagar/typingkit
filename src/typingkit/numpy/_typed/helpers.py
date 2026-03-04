@@ -2,13 +2,13 @@
 Helpers for TypedNDArray
 =======
 """
-# src/typingkit/_typed/helpers.py
+# src/typingkit/numpy/_typed/helpers.py
 
 from typing import Literal, TypeAlias, TypeVar
 
 import numpy as np
 
-from typingkit._typed.ndarray import TypedNDArray
+from typingkit.numpy._typed.ndarray import TypedNDArray
 
 ## Helpers
 
