@@ -193,11 +193,7 @@ class TypedList(RuntimeGeneric[Length, Item], list[Item]):
         return self.__len__()
 
     @classmethod
-    def full(
-        cls: "type[TypedList[Length, Item]]",
-        length: Length,
-        fill_value: Item | Callable[[int], Item],
-    ) -> "TypedList[Length, Item]":
+    def full(cls, length: Length, fill_value: Item | Callable[[int], Item]) -> Self:
         data: list[Item]
         if callable(fill_value):
             data = [cast(Item, fill_value(i)) for i in range(length)]
