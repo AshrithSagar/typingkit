@@ -10,7 +10,7 @@ from collections.abc import Iterable, Sequence
 from types import GenericAlias, NoneType, UnionType
 from typing import Any, Callable, Literal, Self, TypeVar, cast, get_args, get_origin
 
-from typingkit.core.generics import RuntimeGeneric
+from typingkit.core.generics import RuntimeGeneric, get_runtime_args
 
 ## Typings
 
@@ -168,7 +168,7 @@ class TypedList(RuntimeGeneric[Length, Item], list[Item]):
         obj = super().__pre_new__(alias, *args, **kwargs)
 
         ## Runtime validations
-        typeargs = get_args(alias)
+        typeargs = get_runtime_args(alias, cls)
         if len(typeargs) == 2:
             length, item_type = typeargs
         elif len(typeargs) == 1:

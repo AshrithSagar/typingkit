@@ -5,7 +5,17 @@ Generics
 # src/typingkit/core/generics.py
 
 from types import GenericAlias
-from typing import Any, Generic, Self, TypeVarTuple, Unpack, cast, get_args, get_origin
+from typing import (
+    Any,
+    Generic,
+    Self,
+    TypeVar,
+    TypeVarTuple,
+    Unpack,
+    cast,
+    get_args,
+    get_origin,
+)
 
 Ts = TypeVarTuple("Ts", default=Unpack[tuple[Any, ...]])
 
@@ -48,3 +58,57 @@ class _RuntimeGenericAlias(GenericAlias):
         origin: type[RuntimeGeneric] = get_origin(self)
         obj = origin.__pre_new__(self, *args, **kwargs)
         return obj
+
+
+## Generics resolution
+
+
+def _substitute(tp: Any, mapping: dict[Any, Any]) -> Any:
+    if isinstance(tp, TypeVar):
+        return mapping.get(tp, tp)
+
+    origin = get_origin(tp)
+    if origin is None:
+        return tp
+
+    args = get_args(tp)
+    if not args:
+        return tp
+
+    new_args = tuple(_substitute(arg, mapping) for arg in args)
+    return origin[new_args]
+
+
+def get_runtime_args(tp: Any, cls: type) -> tuple[Any, ...]:
+    args = get_args(tp)
+
+    parameters: tuple[Any, ...] = getattr(cls, "__parameters__", ())
+    mapping = dict(zip(parameters, args))
+
+    current_cls = cls
+    while True:
+        orig_bases = getattr(current_cls, "__orig_bases__", ())
+        found_base = False
+
+        for base in orig_bases:
+            origin = get_origin(base)
+            if origin is None:
+                continue
+
+            base_args = get_args(base)
+            resolved = tuple(_substitute(arg, mapping) for arg in base_args)
+
+            if origin is RuntimeGeneric:
+                return resolved
+
+            # Propagate mapping
+            parent_params = getattr(origin, "__parameters__", ())
+            mapping = dict(zip(parent_params, resolved))
+            current_cls = origin
+            found_base = True
+            break
+
+        if not found_base:
+            break
+
+    return args
