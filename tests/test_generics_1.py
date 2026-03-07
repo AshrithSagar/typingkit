@@ -108,6 +108,54 @@ class TestInheritance:
         assert args == (int, float, str)
 
 
+class TestTypeVarDefaults:
+    def test_typevar_default_used(self):
+        TDef = TypeVar("TDef", default=int)
+
+        class Box(RuntimeGeneric[TDef]): ...
+
+        # Using default because no type arg provided
+        Box()
+        args = get_runtime_args(Box, Box)
+        assert args == (int,)
+
+        # Explicit type argument overrides default
+        Box[str]()
+        args = get_runtime_args(Box[str], Box)
+        assert args == (str,)
+
+    def test_combined_default_and_explicit(self):
+        ADef = TypeVar("ADef", default=float)
+        BDef = TypeVar("BDef", default=str)
+
+        class Pair(RuntimeGeneric[ADef, BDef]): ...
+
+        # Both defaults
+        Pair()
+        args = get_runtime_args(Pair, Pair)
+        assert args == (float, str)
+
+        # One explicit, one default
+        Pair[int]()
+        args = get_runtime_args(Pair[int], Pair)
+        assert args == (int, str)
+
+        # Both explicit
+        Pair[int, bool]()
+        args = get_runtime_args(Pair[int, bool], Pair)
+        assert args == (int, bool)
+
+    def test_typevartuple_default_not_supported(self):
+        TsDef = TypeVarTuple("TsDef")
+
+        class TupleBox(RuntimeGeneric[*TsDef]): ...
+
+        # TypeVarTuple cannot have a default; missing args just give empty tuple
+        TupleBox()
+        args = get_runtime_args(TupleBox, TupleBox)
+        assert args == ()
+
+
 class TestEdgeCases:
     def test_no_type_parameters(self):
         class Plain(RuntimeGeneric[*Ts]): ...
@@ -132,6 +180,19 @@ class TestEdgeCases:
 
 
 class TestInvalidUsage:
+    def test_excess_args(self):
+        class Base(RuntimeGeneric[A, B]):
+            @classmethod
+            def __pre_new__(
+                cls, alias: GenericAlias, *args: Any, **kwargs: Any
+            ) -> Self:
+                obj = super().__pre_new__(alias, *args, **kwargs)
+                _ = get_runtime_args(alias, cls)  # enforce check
+                return obj
+
+        with pytest.raises(TypeError):
+            Base[int, str, float]()  # Too many type args
+
     def test_partial_binding(self):
         class Base(RuntimeGeneric[A, B]): ...
 

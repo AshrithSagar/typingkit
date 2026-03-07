@@ -104,25 +104,47 @@ def _substitute(tp: Any, mapping: dict[Any, Any]) -> Any:
 
 def _build_mapping(params: tuple[Any, ...], args: tuple[Any, ...]) -> dict[Any, Any]:
     mapping = dict[Any, Any]()
-
     i: int = 0
     j: int = 0
+
     while i < len(params):
         p = params[i]
 
         if isinstance(p, TypeVarTuple):
+            # Handle tuple unpacking
             remaining_params = len(params) - i - 1
             remaining_args = len(args) - j
             size = remaining_args - remaining_params
-
+            if size < 0:
+                raise TypeError(
+                    f"Not enough type arguments to bind TypeVarTuple {p}. "
+                    f"Expected at least {len(params)} but got {len(args)}"
+                )
             mapping[p] = args[j : j + size]
             j += size
             i += 1
             continue
 
-        mapping[p] = args[j]
+        if j >= len(args):
+            # No argument supplied, try default
+            default = getattr(p, "__default__", None)
+            if default is not None:
+                mapping[p] = default
+            else:
+                raise TypeError(
+                    f"Missing type argument for {p}. Expected {len(params)} args, got {len(args)}"
+                )
+        else:
+            mapping[p] = args[j]
+            j += 1
+
         i += 1
-        j += 1
+
+    if j < len(args):
+        # Extra arguments leftover
+        raise TypeError(
+            f"Too many type arguments. Expected {len(params)}, got {len(args)}"
+        )
 
     return mapping
 
