@@ -17,7 +17,7 @@ from typing import (
     get_origin,
 )
 
-Ts = TypeVarTuple("Ts", default=Unpack[tuple[Any, ...]])
+Ts = TypeVarTuple("Ts")
 
 
 class RuntimeGeneric(Generic[Unpack[Ts]]):
@@ -55,7 +55,7 @@ class _RuntimeGenericAlias(GenericAlias):
         return type(self).from_generic_alias(ga)
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        origin: type[RuntimeGeneric] = get_origin(self)
+        origin: type[RuntimeGeneric[Unpack[Ts]]] = get_origin(self)  # type: ignore[valid-type]
         obj = origin.__pre_new__(self, *args, **kwargs)
         return obj
 
