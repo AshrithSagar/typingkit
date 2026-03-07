@@ -4,7 +4,7 @@ Generics
 """
 # src/typingkit/core/generics.py
 
-from types import GenericAlias
+from types import GenericAlias, get_original_bases
 from typing import (
     Any,
     Generic,
@@ -135,7 +135,7 @@ def get_runtime_args(tp: Any, cls: type) -> tuple[Any, ...]:
 
     current_cls = cls
     while True:
-        orig_bases = getattr(current_cls, "__orig_bases__", ())
+        orig_bases = get_original_bases(current_cls)
         for base in orig_bases:
             origin = get_origin(base)
             if origin is None:
