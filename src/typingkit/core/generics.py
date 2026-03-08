@@ -96,48 +96,35 @@ def _substitute(tp: Any, mapping: dict[Any, Any]) -> Any:
 
 
 def _build_mapping(params: tuple[Any, ...], args: tuple[Any, ...]) -> dict[Any, Any]:
-    mapping = dict[Any, Any]()
-    i: int = 0
-    j: int = 0
+    mapping: dict[Any, Any] = {}
+    arg_i: int = 0
 
-    while i < len(params):
-        p = params[i]
-
-        if isinstance(p, TypeVarTuple):
+    for idx, param in enumerate(params):
+        if isinstance(param, TypeVarTuple):
             # Handle tuple unpacking
-            remaining_params = len(params) - i - 1
-            remaining_args = len(args) - j
-            size = remaining_args - remaining_params
+            remaining_params = len(params) - idx - 1
+            size = len(args) - arg_i - remaining_params
             if size < 0:
-                raise TypeError(
-                    f"Not enough type arguments to bind TypeVarTuple {p}. "
-                    f"Expected at least {len(params)} but got {len(args)}"
-                )
-            mapping[p] = args[j : j + size]
-            j += size
-            i += 1
+                raise TypeError("Not enough type arguments")
+            mapping[param] = args[arg_i : arg_i + size]
+            arg_i += size
             continue
 
-        if j >= len(args):
-            # No argument supplied, try default
-            default = getattr(p, "__default__", None)
-            if default is not None:
-                mapping[p] = default
-            else:
-                raise TypeError(
-                    f"Missing type argument for {p}. Expected {len(params)} args, got {len(args)}"
-                )
-        else:
-            mapping[p] = args[j]
-            j += 1
+        if arg_i < len(args):
+            mapping[param] = args[arg_i]
+            arg_i += 1
+            continue
 
-        i += 1
+        # No argument supplied, try default
+        default = getattr(param, "__default__", None)
+        if default is not None:
+            mapping[param] = default
+            continue
 
-    if j < len(args):
-        # Extra arguments leftover
-        raise TypeError(
-            f"Too many type arguments. Expected {len(params)}, got {len(args)}"
-        )
+        raise TypeError(f"Missing type argument for {param}")
+
+    if arg_i < len(args):
+        raise TypeError("Too many type arguments")
 
     return mapping
 
