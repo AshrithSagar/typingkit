@@ -131,7 +131,7 @@ class TypedDict(RuntimeGeneric[Length, Key, Value], dict[Key, Value]):
         obj = super().__pre_new__(alias, *args, **kwargs)
 
         ## Runtime validations
-        typeargs = get_runtime_args(alias, cls)
+        typeargs = get_runtime_args(alias)
         if len(typeargs) == 3:
             (length, _, _) = typeargs
         elif len(typeargs) == 2:

@@ -168,7 +168,7 @@ class TypedList(RuntimeGeneric[Length, Item], list[Item]):
         obj = super().__pre_new__(alias, *args, **kwargs)
 
         ## Runtime validations
-        typeargs = get_runtime_args(alias, cls)
+        typeargs = get_runtime_args(alias)
         if len(typeargs) == 2:
             length, item_type = typeargs
         elif len(typeargs) == 1:

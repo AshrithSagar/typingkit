@@ -17,6 +17,8 @@ from typing import (
     get_origin,
 )
 
+from typing_extensions import TypeForm  # type: ignore[attr-defined]
+
 Ts = TypeVarTuple("Ts")
 
 
@@ -149,15 +151,25 @@ def _build_mapping(params: tuple[Any, ...], args: tuple[Any, ...]) -> dict[Any, 
     return mapping
 
 
-def get_runtime_args(tp: Any, cls: type) -> tuple[Any, ...]:
+def get_runtime_args(
+    tp: TypeForm[RuntimeGeneric[*Ts]] | GenericAlias,
+) -> tuple[Any, ...]:
+    origin = get_origin(tp)
     args = get_args(tp)
 
-    parameters: tuple[Any, ...] = getattr(cls, "__parameters__", ())
+    if origin is None:
+        if isinstance(tp, type):
+            origin = tp
+            args = ()
+        else:
+            return args
+
+    parameters: tuple[Any, ...] = getattr(origin, "__parameters__", ())
     mapping = _build_mapping(parameters, args)
 
-    current_cls = cls
+    current: type = origin
     while True:
-        orig_bases = get_original_bases(current_cls)
+        orig_bases = get_original_bases(current)
         for base in orig_bases:
             origin = get_origin(base)
             if origin is None:
@@ -172,7 +184,7 @@ def get_runtime_args(tp: Any, cls: type) -> tuple[Any, ...]:
             parent_args = get_args(resolved)
 
             mapping = _build_mapping(parent_params, parent_args)
-            current_cls = origin
+            current = origin
             break
         else:
             break
