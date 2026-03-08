@@ -97,35 +97,32 @@ def _substitute(tp: Any, mapping: dict[Any, Any]) -> Any:
 
 def _build_mapping(params: tuple[Any, ...], args: tuple[Any, ...]) -> dict[Any, Any]:
     mapping: dict[Any, Any] = {}
-    arg_i: int = 0
+    it = iter(args)
 
     for idx, param in enumerate(params):
         if isinstance(param, TypeVarTuple):
             # Handle tuple unpacking
             remaining_params = len(params) - idx - 1
-            size = len(args) - arg_i - remaining_params
+            remaining_args = tuple(it)
+            size = len(remaining_args) - remaining_params
             if size < 0:
                 raise TypeError("Not enough type arguments")
-            mapping[param] = args[arg_i : arg_i + size]
-            arg_i += size
-            continue
+            mapping[param] = remaining_args[:size]
+            it = iter(remaining_args[size:])
+        else:
+            try:
+                mapping[param] = next(it)
+            except StopIteration:
+                # No argument supplied, try default
+                default = getattr(param, "__default__", None)
+                if default is not None:
+                    mapping[param] = default
+                else:
+                    raise TypeError(f"Missing type argument for {param}")
 
-        if arg_i < len(args):
-            mapping[param] = args[arg_i]
-            arg_i += 1
-            continue
-
-        # No argument supplied, try default
-        default = getattr(param, "__default__", None)
-        if default is not None:
-            mapping[param] = default
-            continue
-
-        raise TypeError(f"Missing type argument for {param}")
-
-    if arg_i < len(args):
+    # Check if any leftover arguments remain
+    if any(True for _ in it):
         raise TypeError("Too many type arguments")
-
     return mapping
 
 
