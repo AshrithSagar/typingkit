@@ -9,6 +9,7 @@ from typing import (
     Any,
     Generic,
     Self,
+    TypeAliasType,
     TypeVar,
     TypeVarTuple,
     Unpack,
@@ -30,7 +31,7 @@ class RuntimeGeneric(Generic[Unpack[Ts]]):
 
         try:
             ga = cast(GenericAlias, super().__class_getitem__(item))  # type: ignore[misc]
-        except:  # noqa: E722
+        except (AttributeError, TypeError):
             # Fallback if superclass does not implement `__class_getitem__`
             ga = GenericAlias(cls, item)
         return _RuntimeGenericAlias.from_generic_alias(ga)
@@ -66,6 +67,9 @@ class _RuntimeGenericAlias(GenericAlias):
 
 
 def _substitute(tp: Any, mapping: dict[Any, Any]) -> Any:
+    if not mapping:
+        return tp
+
     if isinstance(tp, TypeVar):
         return mapping.get(tp, tp)
 
@@ -89,7 +93,7 @@ def _substitute(tp: Any, mapping: dict[Any, Any]) -> Any:
 
         return Unpack[value]
 
-    new_args_list = list[Any]()
+    new_args_list: list[Any] = []
     for arg in args:
         val = _substitute(arg, mapping)
         if isinstance(val, tuple):
@@ -99,7 +103,8 @@ def _substitute(tp: Any, mapping: dict[Any, Any]) -> Any:
     new_args = tuple(new_args_list)
 
     try:
-        return origin[new_args]
+        args = new_args[0] if len(new_args) == 1 else new_args
+        return origin[args]
     except TypeError:
         return tp
 
@@ -151,38 +156,49 @@ def _build_mapping(params: tuple[Any, ...], args: tuple[Any, ...]) -> dict[Any, 
     return mapping
 
 
-def get_runtime_args(
-    tp: TypeForm[RuntimeGeneric[*Ts]] | GenericAlias,
+def _flatten_mapping(
+    mapping: dict[Any, Any], params: tuple[Any, ...] | None = None
 ) -> tuple[Any, ...]:
-    origin = get_origin(tp)
+    out: list[Any] = []
+    if params is None:
+        params = tuple(mapping.keys())
+    for param in params:
+        value = mapping[param]
+        if isinstance(value, tuple):
+            out.extend(value)  # pyright: ignore[reportUnknownArgumentType]
+        else:
+            out.append(value)
+    return tuple(out)
+
+
+def get_runtime_args(
+    tp: TypeForm[Any] | GenericAlias | TypeAliasType, upto: type | None = None
+) -> tuple[Any, ...]:
+    origin = get_origin(tp) or tp
     args = get_args(tp)
 
-    if origin is None:
-        if isinstance(tp, type):
-            origin = tp
-            args = ()
-        else:
-            return args
+    # Non-class generics (builtins, alias expansions)
+    if not hasattr(origin, "__orig_bases__"):
+        return args
 
     parameters: tuple[Any, ...] = getattr(origin, "__parameters__", ())
     mapping = _build_mapping(parameters, args)
 
-    current: type = origin
+    current = origin
     while True:
-        orig_bases = get_original_bases(current)
+        orig_bases = get_original_bases(current)  # type: ignore[arg-type]
         for base in orig_bases:
-            origin = get_origin(base)
-            if origin is None:
-                continue
-
+            origin = get_origin(base) or base
             resolved = _substitute(base, mapping)
+            resolved_origin = get_origin(resolved) or resolved
 
-            if get_origin(resolved) is RuntimeGeneric:
+            if upto is not None and resolved_origin is upto:
                 return get_args(resolved)
+            if origin is Generic:
+                return _flatten_mapping(mapping)
 
             parent_params = getattr(origin, "__parameters__", ())
             parent_args = get_args(resolved)
-
             mapping = _build_mapping(parent_params, parent_args)
             current = origin
             break
