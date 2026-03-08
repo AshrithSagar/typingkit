@@ -70,10 +70,7 @@ def _substitute(tp: Any, mapping: dict[Any, Any]) -> Any:
     if not mapping:
         return tp
 
-    if isinstance(tp, TypeVar):
-        return mapping.get(tp, tp)
-
-    if isinstance(tp, TypeVarTuple):
+    if isinstance(tp, (TypeVar, TypeVarTuple)):
         return mapping.get(tp, tp)
 
     origin = get_origin(tp)
