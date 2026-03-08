@@ -81,28 +81,16 @@ def _substitute(tp: Any, mapping: dict[Any, Any]) -> Any:
     args = get_args(tp)
 
     if origin is Unpack:
-        (inner,) = args
-        value = _substitute(inner, mapping)
+        val = _substitute(args[0], mapping)
+        return val if isinstance(val, tuple) else Unpack[val]  # pyright: ignore[reportUnknownVariableType]
 
-        # If the inner resolved to a tuple (TypeVarTuple binding),
-        # return the tuple directly so the parent can expand it.
-        if isinstance(value, tuple):
-            return value  # pyright: ignore[reportUnknownVariableType]
-
-        return Unpack[value]
-
-    new_args_list: list[Any] = []
+    resolved: list[Any] = []
     for arg in args:
         val = _substitute(arg, mapping)
-        if isinstance(val, tuple):
-            new_args_list.extend(val)  # pyright: ignore[reportUnknownArgumentType]
-        else:
-            new_args_list.append(val)
-    new_args = tuple(new_args_list)
+        resolved.extend(val if isinstance(val, tuple) else (val,))  # pyright: ignore[reportUnknownArgumentType]
 
     try:
-        args = new_args[0] if len(new_args) == 1 else new_args
-        return origin[args]
+        return origin[resolved[0] if len(resolved) == 1 else tuple(resolved)]
     except TypeError:
         return tp
 
