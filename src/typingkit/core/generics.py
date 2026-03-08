@@ -81,8 +81,8 @@ def _substitute(tp: Any, mapping: dict[Any, Any]) -> Any:
     args = get_args(tp)
 
     if origin is Unpack:
-        val = _substitute(args[0], mapping)
-        return val if isinstance(val, tuple) else Unpack[val]  # pyright: ignore[reportUnknownVariableType]
+        inner = _substitute(args[0], mapping)
+        return inner if isinstance(inner, tuple) else Unpack[inner]  # pyright: ignore[reportUnknownVariableType]
 
     resolved: list[Any] = []
     for arg in args:
@@ -167,22 +167,22 @@ def get_runtime_args(
     mapping = _build_mapping(parameters, args)
 
     current = origin
-    while True:
+    while hasattr(current, "__orig_bases__"):
         orig_bases = get_original_bases(current)  # type: ignore[arg-type]
         for base in orig_bases:
-            origin = get_origin(base) or base
+            base_origin = get_origin(base) or base
             resolved = _substitute(base, mapping)
             resolved_origin = get_origin(resolved) or resolved
 
             if upto is not None and resolved_origin is upto:
                 return get_args(resolved)
-            if origin is Generic:
+            if base_origin is Generic:
                 return _flatten_mapping(mapping)
 
-            parent_params = getattr(origin, "__parameters__", ())
+            parent_params = getattr(base_origin, "__parameters__", ())
             parent_args = get_args(resolved)
             mapping = _build_mapping(parent_params, parent_args)
-            current = origin
+            current = base_origin
             break
         else:
             break
