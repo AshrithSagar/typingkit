@@ -6,6 +6,7 @@ Tests for RuntimeGeneric core functionality - 1
 # pyright: reportPrivateUsage = false
 # pyright: reportGeneralTypeIssues = false
 # pyright: reportInvalidTypeArguments = false
+# pyright: reportUnknownVariableType = false
 
 from types import GenericAlias
 from typing import Any, Self, TypeVar, TypeVarTuple

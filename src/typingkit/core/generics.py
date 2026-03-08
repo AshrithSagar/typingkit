@@ -16,9 +16,10 @@ from typing import (
     cast,
     get_args,
     get_origin,
+    overload,
 )
 
-from typing_extensions import TypeForm  # type: ignore[attr-defined]
+from typing_extensions import TypeForm
 
 Ts = TypeVarTuple("Ts")
 
@@ -168,6 +169,15 @@ def _flatten_mapping(
     return tuple(out)
 
 
+@overload
+def get_runtime_args(
+    tp: TypeForm[RuntimeGeneric[Unpack[Ts]]], upto: None = None
+) -> tuple[Unpack[Ts]]: ...
+@overload
+def get_runtime_args(
+    tp: TypeForm[Any] | GenericAlias | TypeAliasType, upto: type | None = None
+) -> tuple[Any, ...]: ...
+#
 def get_runtime_args(
     tp: TypeForm[Any] | GenericAlias | TypeAliasType, upto: type | None = None
 ) -> tuple[Any, ...]:

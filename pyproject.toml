@@ -23,5 +23,8 @@ typecheck = [
     "ty>=0.0.21",
 ]
 
+[tool.mypy]
+enable_incomplete_feature = ["TypeForm"]
+
 [tool.uv]
 default-groups = "all"
