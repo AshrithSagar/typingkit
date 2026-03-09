@@ -5,6 +5,7 @@ Generics
 # src/typingkit/core/generics.py
 
 from contextvars import ContextVar
+from dataclasses import fields, is_dataclass
 from types import GenericAlias, get_original_bases
 from typing import (
     Any,
@@ -16,6 +17,7 @@ from typing import (
     Unpack,
     get_args,
     get_origin,
+    get_type_hints,
     overload,
 )
 
@@ -36,6 +38,30 @@ class RuntimeGeneric(Generic[Unpack[Ts]]):
         return _RuntimeGenericAlias(cls, item)
 
     def __runtime_generic_post_init__(self, alias: GenericAlias) -> None:
+        if not is_dataclass(self):
+            return None
+
+        origin = get_origin(alias)
+        args = get_args(alias)
+        parameters = getattr(origin, "__parameters__", ())
+
+        mapping = _build_mapping(parameters, args)
+        hints = get_type_hints(origin)
+
+        for f in fields(self):
+            value = getattr(self, f.name)
+            annotation = hints.get(f.name)
+            if annotation is None:
+                continue
+
+            resolved = _substitute(annotation, mapping)
+            resolved_origin = get_origin(resolved) or resolved
+
+            if isinstance(resolved_origin, type) and issubclass(
+                resolved_origin, RuntimeGeneric
+            ):
+                _apply_runtime_alias(value, resolved)
+
         return None
 
 
@@ -97,6 +123,21 @@ def _resolve_runtime(tp: Any) -> Any:
         return origin[resolved[0] if len(resolved) == 1 else tuple(resolved)]
     except TypeError:
         return tp
+
+
+def _apply_runtime_alias(value: Any, alias: Any) -> None:
+    origin = get_origin(alias)
+
+    if not isinstance(origin, type):
+        return None
+
+    if not isinstance(value, origin):
+        return None
+
+    if issubclass(origin, RuntimeGeneric):
+        origin.__runtime_generic_post_init__(value, alias)  # type: ignore[arg-type]
+
+    return None
 
 
 def _substitute(tp: Any, mapping: dict[Any, Any]) -> Any:
