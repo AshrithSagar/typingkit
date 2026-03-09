@@ -23,7 +23,7 @@ from typing import (
 
 from typing_extensions import TypeForm
 
-_runtime_typevar_ctx = ContextVar("_runtime_typevar_ctx", default=dict[Any, Any]())
+_runtime_typevar_ctx = ContextVar[dict[Any, Any]]("_runtime_typevar_ctx")
 
 Ts = TypeVarTuple("Ts")
 
@@ -86,12 +86,14 @@ class _RuntimeGenericAlias(GenericAlias):
         typeargs = get_args(self)
         parameters = getattr(origin, "__parameters__", ())
         mapping = _build_mapping(parameters, typeargs)
+
         token = _runtime_typevar_ctx.set(mapping)
+        try:
+            obj: RuntimeGeneric[Unpack[Ts]] = super().__call__(*args, **kwargs)  # type: ignore[misc, valid-type]
+            obj.__runtime_generic_post_init__(self)  # pyright: ignore[reportUnknownMemberType]
+        finally:
+            _runtime_typevar_ctx.reset(token)
 
-        obj: RuntimeGeneric[Unpack[Ts]] = super().__call__(*args, **kwargs)  # type: ignore[misc, valid-type]
-        obj.__runtime_generic_post_init__(self)  # pyright: ignore[reportUnknownMemberType]
-
-        _runtime_typevar_ctx.reset(token)
         return obj  # pyright: ignore[reportUnknownVariableType]
 
 
@@ -101,7 +103,7 @@ class _RuntimeGenericAlias(GenericAlias):
 def _resolve_runtime(tp: Any) -> Any:
     """Resolves types using runtime context."""
 
-    ctx = _runtime_typevar_ctx.get()
+    ctx = _runtime_typevar_ctx.get({})
 
     if isinstance(tp, TypeVar):
         return ctx.get(tp, tp)
