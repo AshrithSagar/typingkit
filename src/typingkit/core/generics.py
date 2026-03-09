@@ -4,6 +4,7 @@ Generics
 """
 # src/typingkit/core/generics.py
 
+from contextvars import ContextVar
 from types import GenericAlias, get_original_bases
 from typing import (
     Any,
@@ -13,13 +14,14 @@ from typing import (
     TypeVar,
     TypeVarTuple,
     Unpack,
-    cast,
     get_args,
     get_origin,
     overload,
 )
 
 from typing_extensions import TypeForm
+
+_runtime_typevar_ctx = ContextVar("_runtime_typevar_ctx", default=dict[Any, Any]())
 
 Ts = TypeVarTuple("Ts")
 
@@ -30,12 +32,8 @@ class RuntimeGeneric(Generic[Unpack[Ts]]):
         # [HACK] Misuses __class_getitem__
         # See https://docs.python.org/3/reference/datamodel.html#the-purpose-of-class-getitem
 
-        try:
-            ga = cast(GenericAlias, super().__class_getitem__(item))  # type: ignore[misc]
-        except (AttributeError, TypeError):
-            # Fallback if superclass does not implement `__class_getitem__`
-            ga = GenericAlias(cls, item)
-        return _RuntimeGenericAlias.from_generic_alias(ga)
+        item = _resolve_runtime(item)
+        return _RuntimeGenericAlias(cls, item)
 
     def __runtime_generic_post_init__(self, alias: GenericAlias) -> None:
         return None
@@ -58,12 +56,47 @@ class _RuntimeGenericAlias(GenericAlias):
         return type(self).from_generic_alias(ga)
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        origin = get_origin(self)
+        typeargs = get_args(self)
+        parameters = getattr(origin, "__parameters__", ())
+        mapping = _build_mapping(parameters, typeargs)
+        token = _runtime_typevar_ctx.set(mapping)
+
         obj: RuntimeGeneric[Unpack[Ts]] = super().__call__(*args, **kwargs)  # type: ignore[misc, valid-type]
         obj.__runtime_generic_post_init__(self)  # pyright: ignore[reportUnknownMemberType]
+
+        _runtime_typevar_ctx.reset(token)
         return obj  # pyright: ignore[reportUnknownVariableType]
 
 
 ## Generics resolution
+
+
+def _resolve_runtime(tp: Any) -> Any:
+    """Resolves types using runtime context."""
+
+    ctx = _runtime_typevar_ctx.get()
+
+    if isinstance(tp, TypeVar):
+        return ctx.get(tp, tp)
+
+    if isinstance(tp, tuple):
+        tp = tuple(_resolve_runtime(arg) for arg in tp)  # pyright: ignore[reportUnknownVariableType]
+
+    origin = get_origin(tp)
+    if origin is None:
+        return tp
+
+    args = get_args(tp)
+    resolved = tuple(_resolve_runtime(arg) for arg in args)
+
+    if resolved == args:
+        return tp
+
+    try:
+        return origin[resolved[0] if len(resolved) == 1 else tuple(resolved)]
+    except TypeError:
+        return tp
 
 
 def _substitute(tp: Any, mapping: dict[Any, Any]) -> Any:
