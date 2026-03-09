@@ -10,7 +10,8 @@ from typing import Literal, TypeVar
 
 import pytest
 
-from typingkit.core.dict import LengthError, TypedDict
+from typingkit.core._validators import LengthError
+from typingkit.core.dict import TypedDict
 
 
 class TestBasicCreation:

@@ -6,10 +6,11 @@ TypedList
 
 import copy
 import numbers
-from collections.abc import Iterable, Sequence
-from types import GenericAlias, NoneType, UnionType
-from typing import Any, Callable, Literal, Self, TypeVar, cast, get_args, get_origin
+from collections.abc import Iterable
+from types import GenericAlias
+from typing import Any, Callable, Self, TypeVar, cast, get_origin
 
+from typingkit.core._validators import validate_length
 from typingkit.core.generics import RuntimeGeneric, get_runtime_args
 
 ## Typings
@@ -19,10 +20,6 @@ Item = TypeVar("Item", default=Any)
 
 
 ## Exceptions
-
-
-class LengthError(Exception):
-    """Raised when list length doesn't match expected length."""
 
 
 class ItemError(Exception):
@@ -65,90 +62,6 @@ def _is_assignable(value: Any, expected_type: type) -> bool:
         return False
 
 
-def _resolve_length(length: Any) -> Any:
-    # ~TypeVar
-    if isinstance(length, TypeVar):
-        # [TODO]: How should typing.NoDefault be handled?
-        length = _resolve_length(length.__default__)
-
-    origin = get_origin(length)
-
-    # Literal[A, B, ...]
-    if origin is Literal:
-        length = set(get_args(length))
-
-    # Union[A, B, ...]
-    if origin is UnionType:
-        resolved = (_resolve_length(arg) for arg in get_args(length))
-        result = set[Any]()
-        for r in resolved:
-            if isinstance(r, set):
-                result |= r
-            else:
-                result.add(r)
-        return result
-
-    return length
-
-
-def _validate_length(object: Sequence[Item], length: Any) -> None:
-    if not TypedListConfig.VALIDATE_LENGTH:
-        return None
-
-    length = _resolve_length(length)
-
-    # type[Any]
-    if length is Any:
-        return None
-
-    # type[int]; Including <subclass of int>
-    if isinstance(length, type) and issubclass(length, int):
-        return None
-
-    # Should already be disallowed statically, here we just raise a runtime error
-    if length is NoneType:
-        raise LengthError("Invalid length")
-    # [TODO]: Others
-
-    # [NOTE]: From a statical perspective, being strict,
-    # prefer Literal[~int] over ~int, although we allow it here, for now.
-
-    actual = len(object)
-    if isinstance(length, set):
-        if len(length) > 1:  # pyright: ignore[reportUnknownArgumentType]
-            for arg in length:  # pyright: ignore[reportUnknownVariableType]
-                if isinstance(arg, int):
-                    if arg == actual:
-                        break
-
-                ## [TODO]: Similar to the outer validation, so prolly can refactor through a recursive function call
-                # type[Any]
-                if arg is Any:
-                    break
-
-                # type[int]; Including <subclass of int>
-                if isinstance(arg, type) and issubclass(arg, int):
-                    break
-            else:
-                raise LengthError(
-                    f"Length mismatch: expected one of {length}, got {actual}"
-                )
-        elif len(length) == 1:  # pyright: ignore[reportUnknownArgumentType]
-            # Defer to the single case below
-            length = length.pop()  # pyright: ignore[reportUnknownVariableType]
-        else:  # len(length) == 0
-            # This case should prolly never arise? Strictly speaking, statically.
-            return None
-    # (Concrete) int
-    if isinstance(length, int):
-        # This case is just for a minimal error message, we could already handle
-        # it in the `set` case above, provided `_resolve_length` resolves it accordingly.
-        if actual != length:
-            raise LengthError(f"Length mismatch: expected {length}, got {actual}")
-
-    return None  # Fallback
-
-
 def _validate_item(object: Iterable[Item], item_type: Any) -> None:
     if not TypedListConfig.VALIDATE_ITEM:
         return
@@ -173,7 +86,9 @@ class TypedList(RuntimeGeneric[Length, Item], list[Item]):
             # The `item_type` default here should match the default in `Item`.
         else:
             raise TypeError
-        _validate_length(self, length)
+
+        if TypedListConfig.VALIDATE_LENGTH:
+            validate_length(self, length)
         _validate_item(self, item_type)
         return None
 
