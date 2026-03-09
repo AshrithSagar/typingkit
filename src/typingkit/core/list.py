@@ -162,11 +162,7 @@ def _validate_item(object: Iterable[Item], item_type: Any) -> None:
 
 ## TypedList
 class TypedList(RuntimeGeneric[Length, Item], list[Item]):
-    @classmethod
-    def __pre_new__(cls, alias: GenericAlias, *args: Any, **kwargs: Any) -> Self:
-        # Create `list` object
-        obj = super().__pre_new__(alias, *args, **kwargs)
-
+    def __runtime_generic_post_init__(self, alias: GenericAlias) -> None:
         ## Runtime validations
         typeargs = get_runtime_args(alias)
         if len(typeargs) == 2:
@@ -177,10 +173,9 @@ class TypedList(RuntimeGeneric[Length, Item], list[Item]):
             # The `item_type` default here should match the default in `Item`.
         else:
             raise TypeError
-        _validate_length(obj, length)
-        _validate_item(obj, item_type)
-
-        return obj
+        _validate_length(self, length)
+        _validate_item(self, item_type)
+        return None
 
     def __len__(self) -> Length:
         return cast(Length, super().__len__())

@@ -6,7 +6,7 @@ TypedDict
 
 from collections.abc import Mapping
 from types import GenericAlias, NoneType, UnionType
-from typing import Any, Literal, Self, TypeVar, cast, get_args, get_origin
+from typing import Any, Literal, TypeVar, cast, get_args, get_origin
 
 from typingkit.core.generics import RuntimeGeneric, get_runtime_args
 
@@ -125,11 +125,7 @@ def _validate_length(object: Mapping[Key, Value], length: Any) -> None:
 
 ## TypedDict
 class TypedDict(RuntimeGeneric[Length, Key, Value], dict[Key, Value]):
-    @classmethod
-    def __pre_new__(cls, alias: GenericAlias, *args: Any, **kwargs: Any) -> Self:
-        # Create `dict` object
-        obj = super().__pre_new__(alias, *args, **kwargs)
-
+    def __runtime_generic_post_init__(self, alias: GenericAlias) -> None:
         ## Runtime validations
         typeargs = get_runtime_args(alias)
         if len(typeargs) == 3:
@@ -140,9 +136,8 @@ class TypedDict(RuntimeGeneric[Length, Key, Value], dict[Key, Value]):
             (length,) = typeargs
         else:
             raise TypeError
-        _validate_length(obj, length)
-
-        return obj
+        _validate_length(self, length)
+        return None
 
     def __len__(self) -> Length:
         return cast(Length, super().__len__())

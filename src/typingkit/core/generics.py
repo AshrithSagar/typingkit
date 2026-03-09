@@ -37,9 +37,8 @@ class RuntimeGeneric(Generic[Unpack[Ts]]):
             ga = GenericAlias(cls, item)
         return _RuntimeGenericAlias.from_generic_alias(ga)
 
-    @classmethod
-    def __pre_new__(cls, alias: GenericAlias, *args: Any, **kwargs: Any) -> Self:
-        return cls(*args, **kwargs)
+    def __runtime_generic_post_init__(self, alias: GenericAlias) -> None:
+        return None
 
 
 class _RuntimeGenericAlias(GenericAlias):
@@ -59,9 +58,9 @@ class _RuntimeGenericAlias(GenericAlias):
         return type(self).from_generic_alias(ga)
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        origin: type[RuntimeGeneric[Unpack[Ts]]] = get_origin(self)  # type: ignore[valid-type]
-        obj = origin.__pre_new__(self, *args, **kwargs)
-        return obj
+        obj: RuntimeGeneric[Unpack[Ts]] = super().__call__(*args, **kwargs)  # type: ignore[misc, valid-type]
+        obj.__runtime_generic_post_init__(self)  # pyright: ignore[reportUnknownMemberType]
+        return obj  # pyright: ignore[reportUnknownVariableType]
 
 
 ## Generics resolution

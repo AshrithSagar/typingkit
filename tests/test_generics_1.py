@@ -9,7 +9,7 @@ Tests for RuntimeGeneric core functionality - 1
 # pyright: reportUnknownVariableType = false
 
 from types import GenericAlias
-from typing import Any, Self, TypeVar, TypeVarTuple
+from typing import Any, TypeVar, TypeVarTuple
 
 import pytest
 
@@ -183,13 +183,9 @@ class TestEdgeCases:
 class TestInvalidUsage:
     def test_excess_args(self):
         class Base(RuntimeGeneric[A, B]):
-            @classmethod
-            def __pre_new__(
-                cls, alias: GenericAlias, *args: Any, **kwargs: Any
-            ) -> Self:
-                obj = super().__pre_new__(alias, *args, **kwargs)
-                _ = get_runtime_args(alias)  # enforce check
-                return obj
+            def __runtime_generic_post_init__(self, alias: GenericAlias) -> None:
+                _ = get_runtime_args(alias)  # Enforce check
+                return None
 
         with pytest.raises(TypeError):
             Base[int, str, float]()  # Too many type args
