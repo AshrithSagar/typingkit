@@ -276,6 +276,9 @@ def get_runtime_args(
 
             parent_params = getattr(base_origin, "__parameters__", ())
             parent_args = get_args(resolved)
+            if not parent_params and not parent_args:
+                continue  # Skip non-generic bases
+
             mapping = _build_mapping(parent_params, parent_args)
             current = base_origin
             break

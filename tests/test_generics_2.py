@@ -131,8 +131,7 @@ class TestSubstitute:
 
 class TestCollectInheritedBindings:
     def test_no_generic_bases(self):
-        class Plain:
-            pass
+        class Plain: ...
 
         result = _collect_inherited_bindings(Plain, {})
         assert result == {}
@@ -312,15 +311,21 @@ class TestDeepInheritance:
         assert isinstance(args, tuple)
 
     def test_mixin_does_not_confuse_binding(self):
-        class Mixin:
-            pass
+        class Mixin: ...
 
         class Base(RuntimeGeneric[A, B]): ...
 
-        class Child(Base[int, str], Mixin): ...
+        # Non-generic Mixin first, Base second
+        class Child1(Mixin, Base[int, str]): ...
 
-        args = get_runtime_args(Child)
-        assert args == (int, str)
+        args1 = get_runtime_args(Child1)
+        assert args1 == (int, str)
+
+        # Base first, Non-generic Mixin second
+        class Child2(Base[int, str], Mixin): ...
+
+        args2 = get_runtime_args(Child2)
+        assert args2 == (int, str)
 
     def test_inherited_default_propagated(self):
         TDef = TypeVar("TDef", default=bytes)
@@ -463,8 +468,7 @@ class TestIdempotency:
     def test_double_post_init_stable(self):
         """Calling post_init twice should not corrupt state."""
 
-        class Stable(RuntimeGeneric[T]):
-            pass
+        class Stable(RuntimeGeneric[T]): ...
 
         obj = Stable[int]()
         obj.__runtime_generic_post_init__(GenericAlias(Stable, (int,)))
@@ -481,8 +485,7 @@ class TestIdempotency:
     def test_context_isolation_between_calls(self):
         """Type context from one instantiation must not leak into the next."""
 
-        class Box(RuntimeGeneric[T]):
-            pass
+        class Box(RuntimeGeneric[T]): ...
 
         Box[int]()
         Box[str]()
