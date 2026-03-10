@@ -4,6 +4,7 @@ Generics
 """
 # src/typingkit/core/generics.py
 
+from collections import deque
 from collections.abc import Iterable
 from contextvars import ContextVar
 from dataclasses import fields, is_dataclass
@@ -167,7 +168,7 @@ def propagate_runtime(obj: Any, resolved_type: Any) -> None:
     return None
 
 
-def _augment_with_inherited(cls: type, mapping: dict[Any, Any]) -> None:
+def _augment_with_inherited(cls: Any, mapping: dict[Any, Any]) -> None:
     """
     Walk the full MRO of cls, collecting type bindings from all
     specialised generic bases. Outer / more-derived bindings win; we never overwrite.
@@ -255,17 +256,55 @@ def get_runtime_args(
 
     parameters: tuple[Any, ...] = getattr(origin, "__parameters__", ())
     mapping = _build_mapping(parameters, args)
+    _augment_with_inherited(origin, mapping)
 
+    # If upto is specified, do a full-graph BFS so we don't miss bases
+    # that are reachable only via non-first inheritance slots.
+    if upto is not None:
+        # Queue entries: (class_to_search, mapping_at_that_level)
+        queue: deque[tuple[Any, dict[Any, Any]]] = deque([(origin, mapping)])
+        visited: set[Any] = set()
+        while queue:
+            current, cur_mapping = queue.popleft()
+            if current in visited:
+                continue
+            visited.add(current)
+            if not hasattr(current, "__orig_bases__"):
+                continue
+            for base in get_original_bases(current):
+                base_origin = get_origin(base) or base
+                resolved = _substitute(base, cur_mapping)
+                resolved_origin = get_origin(resolved) or resolved
+
+                if resolved_origin is upto:
+                    return get_args(resolved)
+
+                # Build child mapping and enqueue
+                parent_params = getattr(base_origin, "__parameters__", ())
+                parent_args = get_args(resolved)
+                if not parent_params and not parent_args:
+                    queue.append((base_origin, cur_mapping))
+                    continue
+                if not parent_params:
+                    # builtin generic or similar — can't map, but enqueue bare
+                    queue.append((base_origin, {}))
+                    continue
+                try:
+                    child_mapping = _build_mapping(parent_params, parent_args)
+                except TypeError:
+                    continue
+                queue.append((base_origin, child_mapping))
+        # upto not found — fall through to return args
+        return args
+
+    # No upto: linear walk to Generic anchor, while being mixin safe
     current = origin
     while hasattr(current, "__orig_bases__"):
         orig_bases = get_original_bases(current)  # type: ignore[arg-type]
         for base in orig_bases:
             base_origin = get_origin(base) or base
             resolved = _substitute(base, mapping)
-            resolved_origin = get_origin(resolved) or resolved
 
-            if upto is not None and resolved_origin is upto:
-                return get_args(resolved)
             if base_origin is Generic:
                 return tuple(
                     chain.from_iterable(
@@ -277,7 +316,9 @@ def get_runtime_args(
             parent_params = getattr(base_origin, "__parameters__", ())
             parent_args = get_args(resolved)
             if not parent_params and not parent_args:
-                continue  # Skip non-generic bases
+                continue  # skip plain mixins
+            if not parent_params:
+                continue  # skip builtins with args but no params
 
             mapping = _build_mapping(parent_params, parent_args)
             current = base_origin
