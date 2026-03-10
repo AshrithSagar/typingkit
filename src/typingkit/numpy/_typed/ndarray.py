@@ -467,7 +467,7 @@ class _TypedNDArrayGenericAlias(GenericAlias):
 
     @classmethod
     def from_generic_alias(cls, alias: GenericAlias) -> Self:
-        return cls(alias.__origin__, alias.__args__)  # pyright: ignore[reportArgumentType]
+        return cls(get_origin(alias), get_args(alias))
 
     def __getitem__(self, typeargs: Any) -> Self:
         ga = super().__getitem__(typeargs)
