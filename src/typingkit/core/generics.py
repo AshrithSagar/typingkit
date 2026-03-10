@@ -4,6 +4,7 @@ Generics
 """
 # src/typingkit/core/generics.py
 
+from collections.abc import Iterable
 from contextvars import ContextVar
 from dataclasses import fields, is_dataclass
 from types import GenericAlias, get_original_bases
@@ -37,29 +38,33 @@ class RuntimeGeneric(Generic[Unpack[Ts]]):
         item = _resolve_runtime_with_inherited(cls, item)
         return _RuntimeGenericAlias(cls, item)
 
+    def __runtime_generic_iter_children__(
+        self, mapping: dict[Any, Any]
+    ) -> Iterable[tuple[Any, Any]]:
+        """
+        Yields (value, resolved_annotation) pairs for runtime propagation.
+        Override in subclasses that store children outside __dict__.
+        """
+        if is_dataclass(self):
+            hints = get_type_hints(type(self))
+            for f in fields(self):
+                ann = hints.get(f.name)
+                if ann:
+                    yield getattr(self, f.name), _substitute(ann, mapping)
+        else:
+            anns = getattr(type(self), "__annotations__", {})
+            for name, val in vars(self).items():
+                if name in anns:
+                    yield val, _substitute(anns[name], mapping)
+
     def __runtime_generic_post_init__(self, alias: GenericAlias) -> None:
         origin = get_origin(alias)
         args = get_args(alias)
         parameters = getattr(origin, "__parameters__", ())
         mapping = _build_mapping(parameters, args)
         _augment_with_inherited(type(self), mapping)
-
-        if is_dataclass(self):
-            hints = get_type_hints(origin)
-            for f in fields(self):
-                val = getattr(self, f.name)
-                annotation = hints.get(f.name)
-                if annotation:
-                    resolved = _substitute(annotation, mapping)
-                    propagate_runtime(val, resolved)
-
-        elif hasattr(self, "__dict__"):
-            for name, val in vars(self).items():
-                annotation = getattr(type(self), "__annotations__", {}).get(name)
-                if annotation:
-                    resolved = _substitute(annotation, mapping)
-                    propagate_runtime(val, resolved)
-
+        for val, resolved in self.__runtime_generic_iter_children__(mapping):
+            propagate_runtime(val, resolved)
         return None
 
 

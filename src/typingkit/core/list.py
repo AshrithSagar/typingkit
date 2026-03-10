@@ -75,6 +75,14 @@ def _validate_item(object: Iterable[Item], item_type: Any) -> None:
 
 ## TypedList
 class TypedList(RuntimeGeneric[Length, Item], list[Item]):
+    def __runtime_generic_iter_children__(
+        self, mapping: dict[Any, Any]
+    ) -> Iterable[tuple[Any, Any]]:
+        # Yield list elements with the resolved Item type
+        item_type = mapping.get(Item, Any)  # type: ignore[misc]
+        for elem in self:
+            yield elem, item_type
+
     def __runtime_generic_post_init__(self, alias: GenericAlias) -> None:
         ## Runtime validations
         typeargs = get_runtime_args(alias)
@@ -97,7 +105,7 @@ class TypedList(RuntimeGeneric[Length, Item], list[Item]):
             for elem in self:
                 propagate_runtime(elem, item_type)
 
-        return None
+        return super().__runtime_generic_post_init__(alias)
 
     def __len__(self) -> Length:
         return cast(Length, super().__len__())
