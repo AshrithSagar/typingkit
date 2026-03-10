@@ -105,32 +105,42 @@ class _RuntimeGenericAlias(GenericAlias):
 ## Generics resolution
 
 
+def _collect_inherited_bindings(cls: type, known: dict[Any, Any]) -> dict[Any, Any]:
+    """
+    Walk cls MRO, collect bindings from specialised bases not already in `known`.
+    Returns new bindings only (does not mutate `known`).
+    """
+    extra: dict[Any, Any] = {}
+    for klass in cls.__mro__:
+        for base in getattr(klass, "__orig_bases__", ()):
+            base_origin = get_origin(base)
+            if base_origin is None:
+                continue
+            base_params = getattr(base_origin, "__parameters__", ())
+            base_args = get_args(base)
+            if not base_params or not base_args:
+                continue
+            merged = {**known, **extra}  # outer wins
+            resolved_args = tuple(_substitute(a, merged) for a in base_args)
+            try:
+                inherited = _build_mapping(base_params, resolved_args)
+            except TypeError:
+                continue
+            for k, v in inherited.items():
+                if k not in known and k not in extra:
+                    extra[k] = v
+    return extra
+
+
 def _resolve_runtime_with_inherited(cls: type, item: Any) -> Any:
     """
     Resolves `item` using the current runtime context,
     augmented with any inherited bindings from cls's specialised bases.
     """
-    ctx = _runtime_typevar_ctx.get({}).copy()
-
-    # Walk orig_bases of cls to find already-specialised parents
-    for base in getattr(cls, "__orig_bases__", ()):
-        base_origin = get_origin(base)
-        if base_origin is None:
-            continue
-        base_params = getattr(base_origin, "__parameters__", ())
-        base_args = get_args(base)
-        if not base_params:
-            continue
-        # Substitute known ctx into base_args first (handles partial specialisation)
-        resolved_base_args = tuple(_substitute(a, ctx) for a in base_args)
-        inherited = _build_mapping(base_params, resolved_base_args)
-        # Only add bindings not already present (outer wins)
-        for k, v in inherited.items():
-            if k not in ctx:
-                ctx[k] = v
-
-    # Now resolve item with the augmented context
-    token = _runtime_typevar_ctx.set(ctx)
+    ctx = _runtime_typevar_ctx.get({})
+    extra = _collect_inherited_bindings(cls, ctx)
+    augmented = {**ctx, **extra}
+    token = _runtime_typevar_ctx.set(augmented)
     try:
         return _resolve_runtime(item)
     finally:
@@ -187,26 +197,7 @@ def _augment_with_inherited(cls: type, mapping: dict[Any, Any]) -> None:
     Walk the full MRO of cls, collecting type bindings from all
     specialised generic bases. Outer / more-derived bindings win; we never overwrite.
     """
-    for klass in cls.__mro__:
-        for base in getattr(klass, "__orig_bases__", ()):
-            base_origin = get_origin(base)
-            if base_origin is None:
-                continue
-            base_params = getattr(base_origin, "__parameters__", ())
-            base_args = get_args(base)
-            if not base_params or not base_args:
-                continue
-
-            # Substitute already-known bindings into base_args
-            resolved_args = tuple(_substitute(a, mapping) for a in base_args)
-            try:
-                inherited = _build_mapping(base_params, resolved_args)
-            except TypeError:
-                continue
-            for k, v in inherited.items():
-                if k not in mapping:  # outer wins
-                    mapping[k] = v
-    return None
+    return mapping.update(_collect_inherited_bindings(cls, mapping))
 
 
 def _substitute(tp: Any, mapping: dict[Any, Any]) -> Any:
