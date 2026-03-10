@@ -11,7 +11,7 @@ from types import GenericAlias
 from typing import Any, Callable, Self, TypeVar, cast, get_origin
 
 from typingkit.core._validators import validate_length
-from typingkit.core.generics import RuntimeGeneric, get_runtime_args
+from typingkit.core.generics import RuntimeGeneric, get_runtime_args, propagate_runtime
 
 ## Typings
 
@@ -90,6 +90,16 @@ class TypedList(RuntimeGeneric[Length, Item], list[Item]):
         if TypedListConfig.VALIDATE_LENGTH:
             validate_length(self, length)
         _validate_item(self, item_type)
+
+        # Propagate runtime type info into items that are themselves RuntimeGenerics
+        origin = get_origin(item_type)
+        if origin is not None and issubclass(origin, RuntimeGeneric):
+            for item in self:
+                propagate_runtime(item, item_type)
+        elif isinstance(item_type, type) and issubclass(item_type, RuntimeGeneric):
+            for item in self:
+                propagate_runtime(item, item_type)
+
         return None
 
     def __len__(self) -> Length:

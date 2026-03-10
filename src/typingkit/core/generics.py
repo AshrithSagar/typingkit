@@ -34,33 +34,31 @@ class RuntimeGeneric(Generic[Unpack[Ts]]):
         # [HACK] Misuses __class_getitem__
         # See https://docs.python.org/3/reference/datamodel.html#the-purpose-of-class-getitem
 
-        item = _resolve_runtime(item)
+        item = _resolve_runtime_with_inherited(cls, item)
         return _RuntimeGenericAlias(cls, item)
 
     def __runtime_generic_post_init__(self, alias: GenericAlias) -> None:
-        if not is_dataclass(self):
-            return None
-
         origin = get_origin(alias)
         args = get_args(alias)
         parameters = getattr(origin, "__parameters__", ())
-
         mapping = _build_mapping(parameters, args)
-        hints = get_type_hints(origin)
+        _augment_with_inherited(type(self), mapping)
 
-        for f in fields(self):
-            value = getattr(self, f.name)
-            annotation = hints.get(f.name)
-            if annotation is None:
-                continue
+        if is_dataclass(self):
+            hints = get_type_hints(origin)
+            for f in fields(self):
+                val = getattr(self, f.name)
+                annotation = hints.get(f.name)
+                if annotation:
+                    resolved = _substitute(annotation, mapping)
+                    propagate_runtime(val, resolved)
 
-            resolved = _substitute(annotation, mapping)
-            resolved_origin = get_origin(resolved) or resolved
-
-            if isinstance(resolved_origin, type) and issubclass(
-                resolved_origin, RuntimeGeneric
-            ):
-                _apply_runtime_alias(value, resolved)
+        elif hasattr(self, "__dict__"):
+            for name, val in vars(self).items():
+                annotation = getattr(type(self), "__annotations__", {}).get(name)
+                if annotation:
+                    resolved = _substitute(annotation, mapping)
+                    propagate_runtime(val, resolved)
 
         return None
 
@@ -87,6 +85,8 @@ class _RuntimeGenericAlias(GenericAlias):
         parameters = getattr(origin, "__parameters__", ())
         mapping = _build_mapping(parameters, typeargs)
 
+        _augment_with_inherited(origin, mapping)
+
         token = _runtime_typevar_ctx.set(mapping)
         try:
             obj: RuntimeGeneric[Unpack[Ts]] = super().__call__(*args, **kwargs)  # type: ignore[misc, valid-type]
@@ -98,6 +98,38 @@ class _RuntimeGenericAlias(GenericAlias):
 
 
 ## Generics resolution
+
+
+def _resolve_runtime_with_inherited(cls: type, item: Any) -> Any:
+    """
+    Resolves `item` using the current runtime context,
+    augmented with any inherited bindings from cls's specialised bases.
+    """
+    ctx = _runtime_typevar_ctx.get({}).copy()
+
+    # Walk orig_bases of cls to find already-specialised parents
+    for base in getattr(cls, "__orig_bases__", ()):
+        base_origin = get_origin(base)
+        if base_origin is None:
+            continue
+        base_params = getattr(base_origin, "__parameters__", ())
+        base_args = get_args(base)
+        if not base_params:
+            continue
+        # Substitute known ctx into base_args first (handles partial specialisation)
+        resolved_base_args = tuple(_substitute(a, ctx) for a in base_args)
+        inherited = _build_mapping(base_params, resolved_base_args)
+        # Only add bindings not already present (outer wins)
+        for k, v in inherited.items():
+            if k not in ctx:
+                ctx[k] = v
+
+    # Now resolve item with the augmented context
+    token = _runtime_typevar_ctx.set(ctx)
+    try:
+        return _resolve_runtime(item)
+    finally:
+        _runtime_typevar_ctx.reset(token)
 
 
 def _resolve_runtime(tp: Any) -> Any:
@@ -127,18 +159,54 @@ def _resolve_runtime(tp: Any) -> Any:
         return tp
 
 
-def _apply_runtime_alias(value: Any, alias: Any) -> None:
-    origin = get_origin(alias)
+def propagate_runtime(obj: Any, resolved_type: Any) -> None:
+    if isinstance(obj, RuntimeGeneric):
+        args = get_args(resolved_type)
+        params = getattr(type(obj), "__parameters__", ())  # pyright: ignore[reportUnknownArgumentType]
+        mapping = _build_mapping(params, args)
 
-    if not isinstance(origin, type):
-        return None
+        obj.__runtime_generic_post_init__(resolved_type)
+        for name, val in vars(obj).items():
+            ann = getattr(type(obj), "__annotations__", {}).get(name)  # pyright: ignore[reportUnknownArgumentType]
+            if ann:
+                resolved = _substitute(ann, mapping)
+                propagate_runtime(val, resolved)
 
-    if not isinstance(value, origin):
-        return None
+    elif isinstance(obj, (list, tuple)):
+        for item in obj:  # pyright: ignore[reportUnknownVariableType]
+            propagate_runtime(item, resolved_type)
 
-    if issubclass(origin, RuntimeGeneric):
-        origin.__runtime_generic_post_init__(value, alias)  # type: ignore[arg-type]
+    elif isinstance(obj, dict):
+        for value in obj.values():  # pyright: ignore[reportUnknownVariableType]
+            propagate_runtime(value, resolved_type)
 
+    return None
+
+
+def _augment_with_inherited(cls: type, mapping: dict[Any, Any]) -> None:
+    """
+    Walk the full MRO of cls, collecting type bindings from all
+    specialised generic bases. Outer / more-derived bindings win; we never overwrite.
+    """
+    for klass in cls.__mro__:
+        for base in getattr(klass, "__orig_bases__", ()):
+            base_origin = get_origin(base)
+            if base_origin is None:
+                continue
+            base_params = getattr(base_origin, "__parameters__", ())
+            base_args = get_args(base)
+            if not base_params or not base_args:
+                continue
+
+            # Substitute already-known bindings into base_args
+            resolved_args = tuple(_substitute(a, mapping) for a in base_args)
+            try:
+                inherited = _build_mapping(base_params, resolved_args)
+            except TypeError:
+                continue
+            for k, v in inherited.items():
+                if k not in mapping:  # outer wins
+                    mapping[k] = v
     return None
 
 
