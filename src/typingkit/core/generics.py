@@ -7,6 +7,7 @@ Generics
 from collections.abc import Iterable
 from contextvars import ContextVar
 from dataclasses import fields, is_dataclass
+from itertools import chain
 from types import GenericAlias, get_original_bases
 from typing import (
     Any,
@@ -35,7 +36,7 @@ class RuntimeGeneric(Generic[Unpack[Ts]]):
         # [HACK] Misuses __class_getitem__
         # See https://docs.python.org/3/reference/datamodel.html#the-purpose-of-class-getitem
 
-        item = _resolve_runtime_with_inherited(cls, item)
+        item = _resolve_runtime(item)
         return _RuntimeGenericAlias(cls, item)
 
     def __runtime_generic_iter_children__(
@@ -132,21 +133,6 @@ def _collect_inherited_bindings(cls: type, known: dict[Any, Any]) -> dict[Any, A
     return extra
 
 
-def _resolve_runtime_with_inherited(cls: type, item: Any) -> Any:
-    """
-    Resolves `item` using the current runtime context,
-    augmented with any inherited bindings from cls's specialised bases.
-    """
-    ctx = _runtime_typevar_ctx.get({})
-    extra = _collect_inherited_bindings(cls, ctx)
-    augmented = {**ctx, **extra}
-    token = _runtime_typevar_ctx.set(augmented)
-    try:
-        return _resolve_runtime(item)
-    finally:
-        _runtime_typevar_ctx.reset(token)
-
-
 def _resolve_runtime(tp: Any) -> Any:
     """Resolves types using runtime context."""
 
@@ -177,18 +163,6 @@ def _resolve_runtime(tp: Any) -> Any:
 def propagate_runtime(obj: Any, resolved_type: Any) -> None:
     if isinstance(obj, RuntimeGeneric):
         obj.__runtime_generic_post_init__(resolved_type)
-    elif isinstance(obj, (list, tuple)):
-        args = get_args(resolved_type)
-        item_type = args[0] if args else None
-        if item_type is not None:
-            for item in obj:  # pyright: ignore[reportUnknownVariableType]
-                propagate_runtime(item, item_type)
-    elif isinstance(obj, dict):
-        args = get_args(resolved_type)
-        value_type = args[1] if len(args) >= 2 else None
-        if value_type is not None:
-            for value in obj.values():  # pyright: ignore[reportUnknownVariableType]
-                propagate_runtime(value, value_type)
     return None
 
 
@@ -259,21 +233,6 @@ def _build_mapping(params: tuple[Any, ...], args: tuple[Any, ...]) -> dict[Any, 
     return mapping
 
 
-def _flatten_mapping(
-    mapping: dict[Any, Any], params: tuple[Any, ...] | None = None
-) -> tuple[Any, ...]:
-    out: list[Any] = []
-    if params is None:
-        params = tuple(mapping.keys())
-    for param in params:
-        value = mapping[param]
-        if isinstance(value, tuple):
-            out.extend(value)  # pyright: ignore[reportUnknownArgumentType]
-        else:
-            out.append(value)
-    return tuple(out)
-
-
 @overload
 def get_runtime_args(
     tp: TypeForm[RuntimeGeneric[Unpack[Ts]]], upto: None = None
@@ -307,7 +266,12 @@ def get_runtime_args(
             if upto is not None and resolved_origin is upto:
                 return get_args(resolved)
             if base_origin is Generic:
-                return _flatten_mapping(mapping)
+                return tuple(
+                    chain.from_iterable(
+                        v if isinstance(v, tuple) else (v,)
+                        for v in mapping.values()  # pyright: ignore[reportUnknownArgumentType]
+                    )
+                )
 
             parent_params = getattr(base_origin, "__parameters__", ())
             parent_args = get_args(resolved)

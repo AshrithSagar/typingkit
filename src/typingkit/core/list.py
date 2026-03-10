@@ -85,14 +85,9 @@ class TypedList(RuntimeGeneric[Length, Item], list[Item]):
 
     def __runtime_generic_post_init__(self, alias: GenericAlias) -> None:
         ## Runtime validations
-        typeargs = get_runtime_args(alias)
-        if len(typeargs) == 2:
-            length, item_type = typeargs
-        elif len(typeargs) == 1:
-            (length,) = typeargs
-            item_type = Item.__default__  # type: ignore[misc]
-            # The `item_type` default here should match the default in `Item`.
-        else:
+        try:
+            length, item_type = (*get_runtime_args(alias), Item.__default__)[:2]  # type: ignore[misc]
+        except Exception:
             raise TypeError
 
         if TypedListConfig.VALIDATE_LENGTH:
