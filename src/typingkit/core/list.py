@@ -92,13 +92,10 @@ class TypedList(RuntimeGeneric[Length, Item], list[Item]):
         _validate_item(self, item_type)
 
         # Propagate runtime type info into items that are themselves RuntimeGenerics
-        origin = get_origin(item_type)
-        if origin is not None and issubclass(origin, RuntimeGeneric):
-            for item in self:
-                propagate_runtime(item, item_type)
-        elif isinstance(item_type, type) and issubclass(item_type, RuntimeGeneric):
-            for item in self:
-                propagate_runtime(item, item_type)
+        item_origin = get_origin(item_type) or item_type
+        if isinstance(item_origin, type) and issubclass(item_origin, RuntimeGeneric):
+            for elem in self:
+                propagate_runtime(elem, item_type)
 
         return None
 
