@@ -10,8 +10,8 @@ from typing import Any, Literal, TypeVar
 
 import pytest
 
-from typingkit.core._validators import LengthError
-from typingkit.core.list import ItemError, TypedList, TypedListConfig
+from typingkit.core import TypedCollectionConfig
+from typingkit.core.list import ItemError, LengthError, TypedList
 
 
 class TestDeferredBinding:
@@ -66,24 +66,24 @@ class TestCopyAndLengthProperty:
 
 class TestConfigToggles:
     def test_disable_length_validation(self) -> None:
-        TypedListConfig.disable_all()
+        TypedCollectionConfig.disable_all()
         List3 = TypedList[Literal[3]]
 
         # Should not raise
         lst = List3([1, 2])
 
         assert len(lst) == 2
-        TypedListConfig.enable_all()
+        TypedCollectionConfig.enable_all()
 
     def test_disable_item_validation(self) -> None:
-        TypedListConfig.disable_all()
+        TypedCollectionConfig.disable_all()
         ListInt = TypedList[int, int]
 
         # Should not raise
         lst = ListInt([1, "oops", 3])  # type: ignore
 
         assert len(lst) == 3
-        TypedListConfig.enable_all()
+        TypedCollectionConfig.enable_all()
 
 
 class TestErrorMessages:
@@ -102,8 +102,8 @@ class TestErrorMessages:
             ListInt([1, "a", 3])  # type: ignore
 
         msg = str(exc.value)
-        assert "expected int" in msg
-        assert "got str" in msg
+        assert "expected 'int'" in msg
+        assert "got 'str'" in msg
         assert "index 1" in msg
 
 

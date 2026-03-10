@@ -10,8 +10,8 @@ from typing import Any, Literal, TypeVar
 
 import pytest
 
-from typingkit.core._validators import LengthError
-from typingkit.core.dict import TypedDict, TypedDictConfig
+from typingkit.core import TypedCollectionConfig
+from typingkit.core.dict import LengthError, TypedDict
 
 
 class TestDeferredBinding:
@@ -55,7 +55,7 @@ class TestLengthProperty:
 
 class TestConfigToggles:
     def test_disable_length_validation(self) -> None:
-        TypedDictConfig.disable_all()
+        TypedCollectionConfig.disable_all()
 
         Dict2 = TypedDict[Literal[2]]
 
@@ -63,7 +63,7 @@ class TestConfigToggles:
 
         assert len(d) == 1
 
-        TypedDictConfig.enable_all()
+        TypedCollectionConfig.enable_all()
 
 
 class TestErrorMessages:
