@@ -161,25 +161,19 @@ def _resolve_runtime(tp: Any) -> Any:
 
 def propagate_runtime(obj: Any, resolved_type: Any) -> None:
     if isinstance(obj, RuntimeGeneric):
-        args = get_args(resolved_type)
-        params = getattr(type(obj), "__parameters__", ())  # pyright: ignore[reportUnknownArgumentType]
-        mapping = _build_mapping(params, args)
-
         obj.__runtime_generic_post_init__(resolved_type)
-        for name, val in vars(obj).items():
-            ann = getattr(type(obj), "__annotations__", {}).get(name)  # pyright: ignore[reportUnknownArgumentType]
-            if ann:
-                resolved = _substitute(ann, mapping)
-                propagate_runtime(val, resolved)
-
     elif isinstance(obj, (list, tuple)):
-        for item in obj:  # pyright: ignore[reportUnknownVariableType]
-            propagate_runtime(item, resolved_type)
-
+        args = get_args(resolved_type)
+        item_type = args[0] if args else None
+        if item_type is not None:
+            for item in obj:  # pyright: ignore[reportUnknownVariableType]
+                propagate_runtime(item, item_type)
     elif isinstance(obj, dict):
-        for value in obj.values():  # pyright: ignore[reportUnknownVariableType]
-            propagate_runtime(value, resolved_type)
-
+        args = get_args(resolved_type)
+        value_type = args[1] if len(args) >= 2 else None
+        if value_type is not None:
+            for value in obj.values():  # pyright: ignore[reportUnknownVariableType]
+                propagate_runtime(value, value_type)
     return None
 
 
