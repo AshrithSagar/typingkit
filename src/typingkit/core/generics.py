@@ -12,6 +12,7 @@ from types import GenericAlias, get_original_bases
 from typing import (
     Any,
     Generic,
+    NoDefault,
     Self,
     TypeAliasType,
     TypeVar,
@@ -221,8 +222,8 @@ def _build_mapping(params: tuple[Any, ...], args: tuple[Any, ...]) -> dict[Any, 
                 mapping[param] = next(it)
             except StopIteration:
                 # No argument supplied, try default
-                default = getattr(param, "__default__", None)
-                if default is not None:
+                default = getattr(param, "__default__")
+                if default is not NoDefault:
                     mapping[param] = default
                 else:
                     raise TypeError(f"Missing type argument for {param}")
