@@ -168,10 +168,14 @@ class RuntimeGeneric(Generic[Unpack[Ts]]):
                     self.__runtime_generic_post_init__(alias)
         """
         alias = _runtime_alias_ctx.get()
-        if alias is not None:
-            # Reset immediately so subsequent calls (e.g. numpy view/slice)
-            # see None and skip validation.
-            _runtime_alias_ctx.set(None)
+        if alias is None:
+            return None
+
+        # Only consume if this alias is actually for cls (or a subclass).
+        origin = get_origin(alias)
+        if not (origin is cls or issubclass(origin, cls)):
+            return None  # Not ours — leave it for the right consumer
+        _runtime_alias_ctx.set(None)
         return alias
 
     # ── Child-iteration hook ──────────────────────────────────────────────────
