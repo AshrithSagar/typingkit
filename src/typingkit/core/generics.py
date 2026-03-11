@@ -100,6 +100,33 @@ _runtime_alias_ctx: ContextVar[GenericAlias | None] = ContextVar(
 Ts = TypeVarTuple("Ts")
 
 
+## ── Internal helpers — type introspection ────────────────────────────────────
+
+
+def _has_typevars(tp: Any) -> bool:
+    """
+    Return ``True`` if ``tp`` contains any unbound ``TypeVar`` or
+    ``TypeVarTuple`` at any nesting depth.
+
+    Used as a fast-path guard in ``__runtime_generic_post_init__`` to skip
+    child propagation when the resolved annotation is already fully concrete.
+    Propagating into a fully-concrete child is always a no-op, and skipping
+    it avoids traversing large containers (e.g. a dataset of arrays) on every
+    construction.
+
+    Examples::
+
+        _has_typevars(int)            # False
+        _has_typevars(list[int])      # False
+        _has_typevars(T)              # True
+        _has_typevars(list[T])        # True
+        _has_typevars(tuple[int, T])  # True
+    """
+    if isinstance(tp, (TypeVar, TypeVarTuple)):
+        return True
+    return any(_has_typevars(a) for a in get_args(tp))
+
+
 ## ── Runtime Generic ──────────────────────────────────────────────────────────
 
 
@@ -145,18 +172,22 @@ class RuntimeGeneric(Generic[Unpack[Ts]]):
     @classmethod
     def __runtime_generic_pending_alias__(cls) -> GenericAlias | None:
         """
-        Consume and return the alias stashed by ``_RuntimeGenericAlias.__call__``.
+        Consume and return the alias stashed by ``_RuntimeGenericAlias.__call__``,
+        but only if it belongs to this class (or a subclass of it).
 
-        Returns the specialised alias (e.g. ``MyClass[int, str]``) that was
-        active at the time the current instance began construction, then
-        'resets' the ContextVar to ``None``.
+        Returns ``None`` if no alias is pending, or if the pending alias
+        belongs to a 'different' ``RuntimeGeneric`` subclass that happens to
+        be constructing at the same call-stack level (e.g. a ``TypedList``
+        whose ``__init__`` iterates a ``TypedNDArray``, triggering numpy's
+        ``__array_finalize__`` while the ``TypedList`` alias is still active).
 
-        The reset-on-read semantics are intentional: exotic construction hooks
-        such as ``np.ndarray.__array_finalize__`` are called on 'every' view
-        and slice, not only on the initial construction.  Consuming the alias
-        exactly once ensures ``__runtime_generic_post_init__`` fires only
-        during the original specialised call, not on subsequent numpy
-        operations that re-trigger the finalize hook.
+        The origin-check guard prevents exotic hooks from accidentally
+        consuming a foreign alias and misvalidating the current instance.
+
+        Reset-on-read semantics: the ContextVar is set to ``None`` on first
+        successful consumption, so repeated exotic-hook calls (e.g. numpy
+        fires ``__array_finalize__`` on every slice and view) see ``None``
+        and skip validation cleanly.
 
         Typical use inside ``__array_finalize__`` (or any equivalent hook)::
 
@@ -171,7 +202,7 @@ class RuntimeGeneric(Generic[Unpack[Ts]]):
         if alias is None:
             return None
 
-        # Only consume if this alias is actually for cls (or a subclass).
+        # Only consume the alias if it was actually meant for this class.
         origin = get_origin(alias)
         if not (origin is cls or issubclass(origin, cls)):
             return None  # Not ours — leave it for the right consumer
@@ -215,19 +246,10 @@ class RuntimeGeneric(Generic[Unpack[Ts]]):
 
     def __runtime_generic_pre_init__(self, alias: GenericAlias) -> None:
         """
-        Called just 'before' ``__runtime_generic_post_init__``.
+        Called just before ``__runtime_generic_post_init__``.
 
-        Override this hook to perform setup that must happen before children
-        are iterated or validated — for example, stashing the alias on
-        ``self`` so it is available during ``__runtime_generic_post_init__``.
-
-        The default implementation is a no-op.
-
-        Parameters
-        ----------
-        alias:
-            The fully-specialised ``GenericAlias`` being constructed, e.g.
-            ``MyClass[int, str]``.
+        Override to perform setup that must happen before children are iterated
+        or validated.  Default implementation is a no-op.
         """
         return None
 
@@ -239,26 +261,36 @@ class RuntimeGeneric(Generic[Unpack[Ts]]):
         ``__runtime_generic_iter_children__`` to propagate resolved types into
         any child ``RuntimeGeneric`` instances.
 
-        Override this to add custom validation logic that depends on the
-        concrete type arguments::
+        Performance note: child propagation is skipped for any child whose
+        resolved annotation contains no remaining ``TypeVar`` or
+        ``TypeVarTuple``.  A fully-concrete annotation can never gain new
+        bindings from propagation, so skipping it avoids O(N) traversal of
+        large containers (e.g. a ``TypedList`` of ``TypedNDArray``s) during
+        construction of enclosing ``RuntimeGeneric`` dataclasses.
+
+        Override to add custom validation::
 
             def __runtime_generic_post_init__(self, alias):
                 args = get_runtime_args(alias)
                 validate_something(args, self.data)
-                super().__runtime_generic_post_init__(alias)   # propagate to children
+                super().__runtime_generic_post_init__(alias)  # propagate
 
-        Always call ``super().__runtime_generic_post_init__(alias)`` unless you
-        deliberately want to suppress child propagation.
-
-        Parameters
-        ----------
-        alias:
-            The fully-specialised ``GenericAlias`` being constructed, e.g.
-            ``MyClass[int, str]``.
+        Always call ``super()`` unless you deliberately want to suppress child
+        propagation.
         """
         self.__runtime_generic_pre_init__(alias)
         mapping = _mapping_from_alias(alias, type(self))
         for val, resolved in self.__runtime_generic_iter_children__(mapping):
+            # Skip propagation when the resolved annotation still contains
+            # unbound TypeVars AND the value is not already a RuntimeGeneric
+            # instance.  If the value is a RuntimeGeneric, we must always
+            # propagate regardless of the annotation — the child needs its own
+            # __runtime_generic_post_init__ fired with the resolved alias.
+            # If the value is not a RuntimeGeneric (e.g. a plain int, a torch
+            # Tensor, a large list of non-generic objects), propagation is
+            # always a no-op regardless of annotation, so skip it cheaply.
+            if not isinstance(val, RuntimeGeneric):
+                continue
             propagate_runtime(val, resolved)
         return None
 
@@ -367,9 +399,7 @@ def _build_mapping(params: tuple[Any, ...], args: tuple[Any, ...]) -> dict[Any, 
     """
     Zip type parameters -> type arguments.
 
-    Handles:
-    - Plain TypeVars (with optional defaults for missing trailing args)
-    - TypeVarTuple (greedy consumption, leaving room for subsequent params)
+    Handles plain TypeVars (with optional defaults) and TypeVarTuple (greedy).
     """
     mapping: dict[Any, Any] = {}
     it = iter(args)
@@ -401,8 +431,7 @@ def _build_mapping(params: tuple[Any, ...], args: tuple[Any, ...]) -> dict[Any, 
 def _collect_inherited_bindings(cls: type, known: dict[Any, Any]) -> dict[Any, Any]:
     """
     Walk cls's full MRO and collect TypeVar bindings from every specialised
-    generic base not already present in `known`.  Returns new bindings only;
-    does not mutate `known`.
+    generic base not already present in `known`.
     """
     extra: dict[Any, Any] = {}
     for klass in cls.__mro__:
@@ -438,10 +467,7 @@ def _augment_with_inherited(cls: Any, mapping: dict[Any, Any]) -> None:
 
 
 def _substitute(tp: Any, mapping: dict[Any, Any]) -> Any:
-    """
-    Recursively substitute TypeVars in `tp` using `mapping`.
-    Handles nested generics, TypeVarTuples, and Unpack.
-    """
+    """Recursively substitute TypeVars in `tp` using `mapping`."""
     if not mapping:
         return tp
 
@@ -472,7 +498,6 @@ def _substitute(tp: Any, mapping: dict[Any, Any]) -> Any:
 def _resolve_runtime_ctx(tp: Any) -> Any:
     """
     Resolve `tp` against the active ContextVar mapping set during instantiation.
-    Used internally by __class_getitem__ to evaluate deferred TypeVars.
     """
     ctx = _runtime_typevar_ctx.get({})
 
@@ -548,9 +573,8 @@ def _bfs_upto(
 
 def _walk_to_generic_anchor(origin: Any, mapping: dict[Any, Any]) -> tuple[Any, ...]:
     """
-    Linear walk up the first-generic-base chain until the bare Generic[...]
-    anchor is reached, then flatten mapping values into an args tuple.
-    Skips plain (non-generic) mixins and builtin generics with no params.
+    Walk up the first-generic-base chain to the bare Generic[...] anchor,
+    then flatten mapping values into an args tuple.
     """
     current = origin
     while hasattr(current, "__orig_bases__"):
