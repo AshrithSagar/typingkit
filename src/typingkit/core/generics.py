@@ -11,6 +11,29 @@ get_runtime_origin           – like typing.get_origin, resolves through Runtim
 is_runtime_specialised       – True when every TypeVar in the type is concretely bound
 resolve_runtime_annotation   – substitute TypeVars in an arbitrary annotation
 propagate_runtime            – push a resolved alias into a RuntimeGeneric instance
+
+Framework hooks
+---------------
+The lifecycle of a ``RuntimeGeneric`` instance during specialised construction is::
+
+    _RuntimeGenericAlias.__call__
+        sets _runtime_typevar_ctx   (TypeVar -> type mapping, for __class_getitem__)
+        sets _runtime_alias_ctx     (the full alias, for exotic constructors)
+        -> __new__ / __init__        (normal Python construction path)
+            -> __runtime_generic_pre_init__   (hook: fired just before post-init)
+            -> __runtime_generic_post_init__  (hook: validate + propagate to children)
+        resets both ContextVars
+
+For classes whose construction bypasses ``__call__`` (e.g. ``np.ndarray`` subclasses
+that are built via ``.view()`` and ``__array_finalize__``), subclasses should:
+
+1. Override ``__array_finalize__`` (or equivalent exotic hook).
+2. Call ``self.__runtime_generic_pending_alias__()`` to consume the stashed alias.
+3. Manually invoke ``self.__runtime_generic_post_init__(alias)`` with it.
+
+The ``__runtime_generic_pending_alias__`` classmethod resets the ContextVar on read,
+preventing double-firing if the exotic hook is called more than once (e.g. numpy
+calls ``__array_finalize__`` on every slice / view).
 """
 # src/typingkit/core/generics.py
 
@@ -47,7 +70,32 @@ __all__ = [
     "propagate_runtime",
 ]
 
-_runtime_typevar_ctx = ContextVar[dict[Any, Any]]("_runtime_typevar_ctx")
+# ── ContextVars ───────────────────────────────────────────────────────────────
+
+# Holds the TypeVar -> concrete-type mapping while a specialised instance is
+# being constructed.  Set by ``_RuntimeGenericAlias.__call__`` so that nested
+# ``__class_getitem__`` calls (triggered by field defaults, etc.) can resolve
+# TypeVars that are still in-flight.
+_runtime_typevar_ctx: ContextVar[dict[Any, Any]] = ContextVar("_runtime_typevar_ctx")
+
+# Holds the 'full' specialised alias (e.g. ``MyClass[int, str]``) while an
+# instance is being constructed.  Unlike ``_runtime_typevar_ctx`` this is
+# intentionally readable by subclasses through the public classmethod
+# ``RuntimeGeneric.__runtime_generic_pending_alias__``.
+#
+# This exists specifically to support exotic construction paths (e.g. numpy's
+# ``.view()`` + ``__array_finalize__``) where ``_RuntimeGenericAlias.__call__``
+# never reaches ``__runtime_generic_post_init__`` directly.  The subclass can
+# consume the alias from ``__array_finalize__`` (or equivalent) and fire
+# ``__runtime_generic_post_init__`` itself.
+#
+# The ContextVar is reset to ``None`` the first time it is consumed via
+# ``__runtime_generic_pending_alias__``, preventing double-firing when exotic
+# hooks are called multiple times (e.g. numpy fires ``__array_finalize__`` on
+# every slice and view).
+_runtime_alias_ctx: ContextVar[GenericAlias | None] = ContextVar(
+    "_runtime_alias_ctx", default=None
+)
 
 Ts = TypeVarTuple("Ts")
 
@@ -56,20 +104,96 @@ Ts = TypeVarTuple("Ts")
 
 
 class RuntimeGeneric(Generic[Unpack[Ts]]):
+    """
+    Base class for generic types that need runtime type-argument introspection.
+
+    Subclass this instead of ``Generic`` to gain:
+
+    - Full TypeVar -> concrete-type resolution through the inheritance graph.
+    - Automatic propagation of resolved types to child objects stored as
+      attributes (dataclass fields or ``__dict__`` entries).
+    - A clean hook pair (``__runtime_generic_pre_init__`` /
+      ``__runtime_generic_post_init__``) for custom validation or
+      initialisation logic that depends on the concrete type arguments.
+    - Support for 'exotic' construction paths (e.g. ``np.ndarray.view()``)
+      via ``__runtime_generic_pending_alias__``.
+
+    Typical usage::
+
+        T = TypeVar("T")
+
+        class Box(RuntimeGeneric[T]):
+            def __init__(self, value: T) -> None:
+                self.value = value
+
+        box = Box[int](42)   # __runtime_generic_post_init__ fires automatically
+    """
+
     @classmethod
     def __class_getitem__(cls, item: Any, /) -> GenericAlias:
         # [HACK] Misuses __class_getitem__
         # See https://docs.python.org/3/reference/datamodel.html#the-purpose-of-class-getitem
 
+        # Resolve any TypeVars that are already bound in the active construction
+        # context (set by ``_RuntimeGenericAlias.__call__``).  This handles
+        # cases like ``Box[T]`` appearing inside another specialised generic.
         item = _resolve_runtime_ctx(item)
         return _RuntimeGenericAlias(cls, item)
+
+    # ── Exotic-constructor support ────────────────────────────────────────────
+
+    @classmethod
+    def __runtime_generic_pending_alias__(cls) -> GenericAlias | None:
+        """
+        Consume and return the alias stashed by ``_RuntimeGenericAlias.__call__``.
+
+        Returns the specialised alias (e.g. ``MyClass[int, str]``) that was
+        active at the time the current instance began construction, then
+        'resets' the ContextVar to ``None``.
+
+        The reset-on-read semantics are intentional: exotic construction hooks
+        such as ``np.ndarray.__array_finalize__`` are called on 'every' view
+        and slice, not only on the initial construction.  Consuming the alias
+        exactly once ensures ``__runtime_generic_post_init__`` fires only
+        during the original specialised call, not on subsequent numpy
+        operations that re-trigger the finalize hook.
+
+        Typical use inside ``__array_finalize__`` (or any equivalent hook)::
+
+            def __array_finalize__(self, obj, /):
+                if obj is None:
+                    return
+                alias = self.__runtime_generic_pending_alias__()
+                if alias is not None:
+                    self.__runtime_generic_post_init__(alias)
+        """
+        alias = _runtime_alias_ctx.get()
+        if alias is not None:
+            # Reset immediately so subsequent calls (e.g. numpy view/slice)
+            # see None and skip validation.
+            _runtime_alias_ctx.set(None)
+        return alias
+
+    # ── Child-iteration hook ──────────────────────────────────────────────────
 
     def __runtime_generic_iter_children__(
         self, mapping: dict[Any, Any]
     ) -> Iterable[tuple[Any, Any]]:
         """
-        Yields (value, resolved_annotation) pairs for runtime propagation.
-        Override in subclasses that store children outside __dict__.
+        Yield ``(value, resolved_annotation)`` pairs for runtime propagation.
+
+        The default implementation inspects ``__dict__`` (or dataclass fields)
+        and resolves each annotated attribute's type using ``mapping``.
+
+        Override in subclasses that store children outside ``__dict__`` — for
+        example a container whose elements live in a C buffer rather than as
+        Python attributes.
+
+        Parameters
+        ----------
+        mapping:
+            The fully-resolved TypeVar -> concrete-type dict for this instance,
+            as returned by ``_mapping_from_alias``.
         """
         if is_dataclass(self):
             hints = get_type_hints(type(self))
@@ -83,7 +207,52 @@ class RuntimeGeneric(Generic[Unpack[Ts]]):
                 if name in anns:
                     yield val, _substitute(anns[name], mapping)
 
+    # ── Lifecycle hooks ───────────────────────────────────────────────────────
+
+    def __runtime_generic_pre_init__(self, alias: GenericAlias) -> None:
+        """
+        Called just 'before' ``__runtime_generic_post_init__``.
+
+        Override this hook to perform setup that must happen before children
+        are iterated or validated — for example, stashing the alias on
+        ``self`` so it is available during ``__runtime_generic_post_init__``.
+
+        The default implementation is a no-op.
+
+        Parameters
+        ----------
+        alias:
+            The fully-specialised ``GenericAlias`` being constructed, e.g.
+            ``MyClass[int, str]``.
+        """
+        return None
+
     def __runtime_generic_post_init__(self, alias: GenericAlias) -> None:
+        """
+        Called after the instance has been constructed with a specialised alias.
+
+        Builds the TypeVar -> concrete-type mapping from ``alias``, then walks
+        ``__runtime_generic_iter_children__`` to propagate resolved types into
+        any child ``RuntimeGeneric`` instances.
+
+        Override this to add custom validation logic that depends on the
+        concrete type arguments::
+
+            def __runtime_generic_post_init__(self, alias):
+                args = get_runtime_args(alias)
+                validate_something(args, self.data)
+                super().__runtime_generic_post_init__(alias)   # propagate to children
+
+        Always call ``super().__runtime_generic_post_init__(alias)`` unless you
+        deliberately want to suppress child propagation.
+
+        Parameters
+        ----------
+        alias:
+            The fully-specialised ``GenericAlias`` being constructed, e.g.
+            ``MyClass[int, str]``.
+        """
+        self.__runtime_generic_pre_init__(alias)
         mapping = _mapping_from_alias(alias, type(self))
         for val, resolved in self.__runtime_generic_iter_children__(mapping):
             propagate_runtime(val, resolved)
@@ -92,27 +261,84 @@ class RuntimeGeneric(Generic[Unpack[Ts]]):
 
 class _RuntimeGenericAlias(GenericAlias):
     """
-    Deferred RuntimeGeneric constructor.
-    Enables progressive type specialisation, behaving like a type-level curry.
+    Deferred ``RuntimeGeneric`` constructor.
+
+    Returned by ``RuntimeGeneric.__class_getitem__`` in place of a plain
+    ``GenericAlias``.  Behaves like a type-level curry: each ``[]`` application
+    binds more TypeVars, and ``()`` finally constructs the instance.
+
+    Construction lifecycle
+    ----------------------
+    1. Set ``_runtime_typevar_ctx`` so nested ``__class_getitem__`` calls can
+       resolve in-flight TypeVars (used by field defaults, etc.).
+    2. Set ``_runtime_alias_ctx`` so exotic constructors (e.g. numpy's
+       ``__array_finalize__``) can retrieve the alias without going through
+       the normal ``__call__`` path.
+    3. Call ``super().__call__`` to invoke ``__new__`` / ``__init__``.
+    4. Call ``__runtime_generic_post_init__`` on the resulting instance.
+    5. Reset both ContextVars via their tokens regardless of exceptions.
     """
+
+    def __new__(cls, origin: type, args: Any, /) -> Self:
+        inst = super().__new__(cls, origin, args)
+
+        # [TODO]: Validate TypeVars specialisation, against bounds/constraints too [?]
+        params = getattr(origin, "__parameters__", ())
+        args_tuple: tuple[Any, ...] = args if isinstance(args, tuple) else (args,)  # pyright: ignore[reportUnknownVariableType]
+
+        # Count max capacity: TypeVarTuple is greedy so its presence
+        # means the upper bound is unbounded — skip the check.
+        has_tvt = any(isinstance(p, TypeVarTuple) for p in params)
+        if not has_tvt and len(args_tuple) > len(params):
+            raise TypeError(
+                f"Too many arguments for {origin.__name__}: "
+                f"actual {len(args_tuple)}, expected {len(params)}"
+            )
+
+        return inst
 
     @classmethod
     def from_generic_alias(cls, alias: GenericAlias) -> Self:
+        """Wrap an existing ``GenericAlias`` in a ``_RuntimeGenericAlias``."""
         return cls(get_origin(alias), get_args(alias))
 
     def __getitem__(self, typeargs: Any) -> Self:
+        """Support progressive binding: ``MyClass[T][int]`` -> ``MyClass[int]``."""
         return type(self).from_generic_alias(super().__getitem__(typeargs))
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        """
+        Construct a specialised ``RuntimeGeneric`` instance.
+
+        Sets both runtime ContextVars, delegates to ``super().__call__``, then
+        fires ``__runtime_generic_post_init__`` on the result.  Both ContextVars
+        are reset in a ``finally`` block so they cannot leak across coroutines or
+        nested constructions.
+
+        For subclasses with exotic construction paths (e.g. ``np.ndarray``
+        subclasses built via ``.view()``), ``__runtime_generic_post_init__``
+        will 'not' be reached through this path.  Those subclasses should
+        instead override their exotic hook (e.g. ``__array_finalize__``) and
+        call ``self.__runtime_generic_pending_alias__()`` to retrieve the alias
+        stashed in ``_runtime_alias_ctx``.
+        """
         origin = get_origin(self)
         mapping = _mapping_from_alias(self, origin)
 
-        token = _runtime_typevar_ctx.set(mapping)
+        typevar_token = _runtime_typevar_ctx.set(mapping)
+        alias_token = _runtime_alias_ctx.set(self)  # type: ignore[arg-type]
         try:
             obj: RuntimeGeneric[Unpack[Ts]] = super().__call__(*args, **kwargs)  # type: ignore[misc, valid-type]
+
+            # For normal construction paths the alias is still set here; fire
+            # post_init directly.  For exotic paths (numpy etc.) the alias has
+            # already been consumed and reset by ``__runtime_generic_pending_alias__``,
+            # so this call is a no-op (alias would be None if we checked, but
+            # post_init has already fired from the exotic hook).
             obj.__runtime_generic_post_init__(self)  # pyright: ignore[reportUnknownMemberType]
         finally:
-            _runtime_typevar_ctx.reset(token)
+            _runtime_typevar_ctx.reset(typevar_token)
+            _runtime_alias_ctx.reset(alias_token)
 
         return obj  # pyright: ignore[reportUnknownVariableType]
 
