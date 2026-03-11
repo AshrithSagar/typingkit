@@ -380,6 +380,30 @@ def _walk_to_generic_anchor(
     return _flatten_mapping_values(mapping, has_tvt_value)
 
 
+## ── Alias-keyed caches ───────────────────────────────────────────────────────
+
+@lru_cache(maxsize=1024)
+def _cached_get_runtime_args(tp: Any) -> tuple[Any, ...]:
+    """Cached MRO walk for get_runtime_args(tp, upto=None)."""
+    origin = get_origin(tp) or tp
+    parameters: tuple[Any, ...] = getattr(origin, "__parameters__", ())
+    mapping, has_tvt_value = _build_mapping(parameters, get_args(tp))
+    _augment_with_inherited(origin, mapping)
+    return _walk_to_generic_anchor(origin, mapping, has_tvt_value)
+
+
+@lru_cache(maxsize=1024)
+def _cached_get_runtime_mapping(tp: Any) -> tuple[tuple[Any, Any], ...]:
+    """Cached MRO walk for get_runtime_mapping(tp), returned as immutable items tuple."""
+    origin = get_origin(tp) or tp
+    if not hasattr(origin, "__orig_bases__"):
+        return ()
+    parameters: tuple[Any, ...] = getattr(origin, "__parameters__", ())
+    mapping, _ = _build_mapping(parameters, get_args(tp))
+    _augment_with_inherited(origin, mapping)
+    return tuple(mapping.items())
+
+
 ## ── Runtime Generic ──────────────────────────────────────────────────────────
 
 
@@ -513,7 +537,7 @@ class RuntimeGeneric(Generic[Unpack[Ts]]):
         Override to add custom validation::
 
             def __runtime_generic_post_init__(self, alias):
-                args = get_runtime_args(alias)
+                args = get_runtime_args(alias)   # O(1) from cache after first call
                 validate_something(args, self.data)
                 super().__runtime_generic_post_init__(alias)  # propagate
 
@@ -531,6 +555,11 @@ class RuntimeGeneric(Generic[Unpack[Ts]]):
         Walk ``__runtime_generic_iter_children__`` and recursively fire
         ``__runtime_generic_post_init__`` on any child ``RuntimeGeneric``
         instances.
+
+        Separated from ``__runtime_generic_post_init__`` so that subclass
+        overrides can call ``super().__runtime_generic_propagate_to_children__(mapping)``
+        after doing their own validation — reusing the mapping that was already
+        built rather than recomputing it via a second ``mapping_from_alias`` call.
         """
         for val, resolved in self.__runtime_generic_iter_children__(mapping):
             if isinstance(val, RuntimeGeneric):
@@ -632,6 +661,12 @@ def mapping_from_alias(alias: Any, cls: Any) -> dict[Any, Any]:
     """
     Build a fully-augmented TypeVar -> type mapping from a specialised alias,
     then fill in any remaining bindings from cls's inheritance chain.
+
+    The mapping is built fresh each call (not cached here) because it is
+    mutated in-place by ``_augment_with_inherited``.  The underlying MRO walk
+    inside ``_augment_with_inherited`` is itself cached, so the only uncached
+    work is ``_build_mapping`` (a simple zip) plus the ``tuple(mapping.items())``
+    key construction.
     """
     origin = get_origin(alias) or alias
     parameters: tuple[Any, ...] = getattr(origin, "__parameters__", ())
@@ -691,8 +726,16 @@ def get_runtime_args(
     origin = get_runtime_origin(tp)
 
     if not hasattr(origin, "__orig_bases__"):
-        return get_args(tp)
+        return get_args(tp)  # builtin generics: list[int] etc — already fast
 
+    # Fast path: upto=None — by far the dominant call pattern at construction time.
+    if upto is None:
+        try:
+            return _cached_get_runtime_args(tp)
+        except TypeError:
+            pass  # unhashable tp (shouldn't occur for GenericAlias, but be defensive)
+
+    # Slow path: upto= specified, or unhashable tp.
     parameters: tuple[Any, ...] = getattr(origin, "__parameters__", ())
     mapping, has_tvt_value = _build_mapping(parameters, get_args(tp))
     _augment_with_inherited(origin, mapping)
@@ -720,11 +763,21 @@ def get_runtime_mapping(
         get_runtime_mapping(Pair[int, str])   # {A: int, B: str}
         get_runtime_mapping(Pair[int, B])     # {A: int, B: B}  <- B unbound
         get_runtime_mapping(Pair)             # {}  (no params supplied)
+
+    Performance
+    -----------
+    Results are cached per alias.  The returned dict is a fresh copy each call
+    so callers may mutate it freely without affecting the cache.
     """
     origin = get_runtime_origin(tp)
 
     if not hasattr(origin, "__orig_bases__"):
         return {}
+
+    try:
+        return dict(_cached_get_runtime_mapping(tp))
+    except TypeError:
+        pass  # unhashable tp — fall through
 
     parameters: tuple[Any, ...] = getattr(origin, "__parameters__", ())
     mapping, _ = _build_mapping(parameters, get_args(tp))
@@ -743,11 +796,18 @@ def is_runtime_specialised(
 
         assert is_runtime_specialised(MyList[int]), "Need a concrete element type"
     """
-    mapping = get_runtime_mapping(tp)
-    # No parameters at all — trivially specialised (e.g. a plain class).
-    if not mapping:
+    origin = get_runtime_origin(tp)
+    if not hasattr(origin, "__orig_bases__"):
+        return True  # no parameters — trivially specialised
+
+    try:
+        items = _cached_get_runtime_mapping(tp)
+    except TypeError:
+        items = tuple(get_runtime_mapping(tp).items())
+
+    if not items:
         return True
-    return not any(type(v) in _TV_TYPES for v in mapping.values())
+    return not any(type(v) in _TV_TYPES for _, v in items)
 
 
 def resolve_runtime_annotation(
