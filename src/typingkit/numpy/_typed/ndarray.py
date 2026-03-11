@@ -353,6 +353,10 @@ class TypedNDArray(
             The fully-specialised alias, e.g.
             ``TypedNDArray[tuple[Literal[3]], np.dtype[np.int32]]``.
         """
+        if getattr(self, "_runtime_validated", False):
+            return  # already validated at construction time, skip re-validation
+        self._runtime_validated = True
+
         args = get_runtime_args(alias)
 
         # Both type params have defaults, so args may be shorter than 2.

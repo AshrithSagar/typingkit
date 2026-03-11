@@ -40,6 +40,10 @@ class TypedDict(RuntimeGeneric[Length, Key, Value], dict[Key, Value]):
     # ── RuntimeGeneric hooks ──────────────────────────────────────────────────
 
     def __runtime_generic_post_init__(self, alias: GenericAlias) -> None:
+        if getattr(self, "_runtime_validated", False):
+            return  # already validated when this dict was first constructed
+        self._runtime_validated = True
+
         args = get_runtime_args(alias)
         length: Any = args[0] if args else Length.__default__  # type: ignore[misc]
 

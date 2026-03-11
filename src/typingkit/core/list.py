@@ -95,6 +95,10 @@ class TypedList(RuntimeGeneric[Length, Item], list[Item]):
             yield elem, item_type
 
     def __runtime_generic_post_init__(self, alias: GenericAlias) -> None:
+        if getattr(self, "_runtime_validated", False):
+            return  # already validated when this list was first constructed
+        self._runtime_validated = True
+
         args = get_runtime_args(alias)
         # Positional: [Length, Item] — both optional at runtime
         length: Any = args[0] if len(args) > 0 else Length.__default__  # type: ignore[misc]

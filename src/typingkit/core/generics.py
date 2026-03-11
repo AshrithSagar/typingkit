@@ -382,6 +382,7 @@ def _walk_to_generic_anchor(
 
 ## ── Alias-keyed caches ───────────────────────────────────────────────────────
 
+
 @lru_cache(maxsize=1024)
 def _cached_get_runtime_args(tp: Any) -> tuple[Any, ...]:
     """Cached MRO walk for get_runtime_args(tp, upto=None)."""
