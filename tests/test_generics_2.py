@@ -37,33 +37,33 @@ class TestBuildMapping:
     """Unit tests for the internal _build_mapping helper."""
 
     def test_single_typevar(self):
-        mapping = _build_mapping((T,), (int,))
+        mapping, _ = _build_mapping((T,), (int,))
         assert mapping == {T: int}
 
     def test_multiple_typevars(self):
-        mapping = _build_mapping((A, B), (int, str))
+        mapping, _ = _build_mapping((A, B), (int, str))
         assert mapping == {A: int, B: str}
 
     def test_typevar_tuple_all_consumed(self):
-        mapping = _build_mapping((Ts,), (int, str, float))
+        mapping, _ = _build_mapping((Ts,), (int, str, float))
         assert mapping[Ts] == (int, str, float)
 
     def test_typevar_tuple_empty(self):
-        mapping = _build_mapping((Ts,), ())
+        mapping, _ = _build_mapping((Ts,), ())
         assert mapping[Ts] == ()
 
     def test_typevar_tuple_with_fixed_before(self):
-        mapping = _build_mapping((A, Ts), (int, str, float))
+        mapping, _ = _build_mapping((A, Ts), (int, str, float))
         assert mapping[A] is int
         assert mapping[Ts] == (str, float)
 
     def test_typevar_tuple_with_fixed_after(self):
-        mapping = _build_mapping((Ts, B), (int, str, float))
+        mapping, _ = _build_mapping((Ts, B), (int, str, float))
         assert mapping[Ts] == (int, str)
         assert mapping[B] is float
 
     def test_typevar_tuple_between_fixed(self):
-        mapping = _build_mapping((A, Ts, B), (int, str, bytes, float))
+        mapping, _ = _build_mapping((A, Ts, B), (int, str, bytes, float))
         assert mapping[A] is int
         assert mapping[Ts] == (str, bytes)
         assert mapping[B] is float
@@ -78,18 +78,18 @@ class TestBuildMapping:
 
     def test_missing_arg_with_default(self):
         ADef = TypeVar("ADef", default=int)
-        mapping = _build_mapping((ADef,), ())
+        mapping, _ = _build_mapping((ADef,), ())
         assert mapping[ADef] is int
 
     def test_partial_default_fills_remainder(self):
         ADef = TypeVar("ADef", default=float)
         BDef = TypeVar("BDef", default=str)
-        mapping = _build_mapping((ADef, BDef), (int,))
+        mapping, _ = _build_mapping((ADef, BDef), (int,))
         assert mapping[ADef] is int
         assert mapping[BDef] is str
 
     def test_empty_params_empty_args(self):
-        mapping = _build_mapping((), ())
+        mapping, _ = _build_mapping((), ())
         assert mapping == {}
 
     def test_empty_params_extra_args_raises(self):

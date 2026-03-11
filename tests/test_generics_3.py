@@ -373,7 +373,7 @@ class TestTypeVarConstraints:
 
     def test_constrained_typevar_in_mapping(self):
         NumOrStr = TypeVar("NumOrStr", int, str)
-        mapping = _build_mapping((NumOrStr,), (int,))
+        mapping, _ = _build_mapping((NumOrStr,), (int,))
         assert mapping[NumOrStr] is int
 
     def test_constrained_typevar_inherited(self):
