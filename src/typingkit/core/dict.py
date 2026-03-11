@@ -9,7 +9,7 @@ from typing import Any, TypeVar, cast
 
 from typingkit.core._config import TypedCollectionConfig
 from typingkit.core._validators import LengthError, validate_length
-from typingkit.core.generics import RuntimeGeneric, get_runtime_args
+from typingkit.core.generics import RuntimeGeneric, get_runtime_args, mapping_from_alias
 
 __all__ = [
     "TypedDict",
@@ -46,9 +46,8 @@ class TypedDict(RuntimeGeneric[Length, Key, Value], dict[Key, Value]):
         if TypedCollectionConfig.VALIDATE_LENGTH:
             validate_length(self, length)
 
-        # Propagate into nested RuntimeGenerics — delegate to the base class
-        # which calls __runtime_generic_iter_children__ for us.
-        return super().__runtime_generic_post_init__(alias)
+        mapping = mapping_from_alias(alias, type(self))
+        self.__runtime_generic_propagate_to_children__(mapping)
 
     # ── dict API ──────────────────────────────────────────────────────────────
 

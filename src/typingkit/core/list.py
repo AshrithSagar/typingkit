@@ -12,7 +12,7 @@ from typing import Any, Callable, Self, TypeVar, cast, get_origin
 
 from typingkit.core._config import TypedCollectionConfig
 from typingkit.core._validators import LengthError, validate_length
-from typingkit.core.generics import RuntimeGeneric, get_runtime_args
+from typingkit.core.generics import RuntimeGeneric, get_runtime_args, mapping_from_alias
 
 __all__ = [
     "TypedList",
@@ -80,8 +80,8 @@ class TypedList(RuntimeGeneric[Length, Item], list[Item]):
 
     Usage::
 
-        TypedList[Litera[3]]([1, 2, 3])           # element type checked
-        TypedList[Literal[3], int]([1,2,3])       # length + element type checked
+        TypedList[Literal[3]]([1, 2, 3])           # element type checked
+        TypedList[Literal[3], int]([1, 2, 3])      # length + element type checked
     """
 
     # ── RuntimeGeneric hooks ──────────────────────────────────────────────────
@@ -104,9 +104,8 @@ class TypedList(RuntimeGeneric[Length, Item], list[Item]):
             validate_length(self, length)
         _validate_items(self, item_type)
 
-        # Propagate into nested RuntimeGenerics — delegate to the base class
-        # which calls __runtime_generic_iter_children__ for us.
-        return super().__runtime_generic_post_init__(alias)
+        mapping = mapping_from_alias(alias, type(self))
+        self.__runtime_generic_propagate_to_children__(mapping)
 
     # ── list API ──────────────────────────────────────────────────────────────
 

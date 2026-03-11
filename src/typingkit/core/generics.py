@@ -218,21 +218,6 @@ def _augment_with_inherited(cls: type, mapping: dict[Any, Any]) -> None:
         mapping.setdefault(k, v)
 
 
-## ── Internal helpers — alias -> mapping ──────────────────────────────────────
-
-
-def _mapping_from_alias(alias: Any, cls: Any) -> dict[Any, Any]:
-    """
-    Build a fully-augmented TypeVar -> type mapping from a specialised alias,
-    then fill in any remaining bindings from cls's inheritance chain.
-    """
-    origin = get_origin(alias) or alias
-    parameters: tuple[Any, ...] = getattr(origin, "__parameters__", ())
-    mapping, _ = _build_mapping(parameters, get_args(alias))
-    _augment_with_inherited(cls, mapping)
-    return mapping
-
-
 ## ── Internal helpers — substitution & runtime context ────────────────────────
 
 
@@ -489,7 +474,7 @@ class RuntimeGeneric(Generic[Unpack[Ts]]):
         ----------
         mapping:
             The fully-resolved TypeVar -> concrete-type dict for this instance,
-            as returned by ``_mapping_from_alias``.
+            as returned by ``mapping_from_alias``.
         """
         if is_dataclass(self):
             hints = get_type_hints(type(self))
@@ -536,7 +521,17 @@ class RuntimeGeneric(Generic[Unpack[Ts]]):
         propagation.
         """
         self.__runtime_generic_pre_init__(alias)
-        mapping = _mapping_from_alias(alias, type(self))
+        mapping = mapping_from_alias(alias, type(self))
+        self.__runtime_generic_propagate_to_children__(mapping)
+
+    def __runtime_generic_propagate_to_children__(
+        self, mapping: dict[Any, Any]
+    ) -> None:
+        """
+        Walk ``__runtime_generic_iter_children__`` and recursively fire
+        ``__runtime_generic_post_init__`` on any child ``RuntimeGeneric``
+        instances.
+        """
         for val, resolved in self.__runtime_generic_iter_children__(mapping):
             if isinstance(val, RuntimeGeneric):
                 val.__runtime_generic_post_init__(resolved)
@@ -606,7 +601,7 @@ class _RuntimeGenericAlias(GenericAlias):
         ``self.__runtime_generic_pending_alias__()`` to retrieve the stashed alias.
         """
         origin = get_origin(self)
-        mapping = _mapping_from_alias(self, origin)
+        mapping = mapping_from_alias(self, origin)
 
         typevar_token = _runtime_typevar_ctx.set(mapping)
         alias_token = _runtime_alias_ctx.set(self)  # type: ignore[arg-type]
@@ -631,6 +626,18 @@ def propagate_runtime(obj: Any, resolved_type: Any) -> None:
     """
     if isinstance(obj, RuntimeGeneric):
         obj.__runtime_generic_post_init__(resolved_type)
+
+
+def mapping_from_alias(alias: Any, cls: Any) -> dict[Any, Any]:
+    """
+    Build a fully-augmented TypeVar -> type mapping from a specialised alias,
+    then fill in any remaining bindings from cls's inheritance chain.
+    """
+    origin = get_origin(alias) or alias
+    parameters: tuple[Any, ...] = getattr(origin, "__parameters__", ())
+    mapping, _ = _build_mapping(parameters, get_args(alias))
+    _augment_with_inherited(cls, mapping)
+    return mapping
 
 
 def get_runtime_origin(tp: Any) -> Any:
