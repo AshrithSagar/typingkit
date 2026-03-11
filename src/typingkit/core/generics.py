@@ -41,6 +41,7 @@ from collections import deque
 from collections.abc import Iterable
 from contextvars import ContextVar
 from dataclasses import fields, is_dataclass
+from functools import lru_cache
 from itertools import chain
 from types import GenericAlias, get_original_bases
 from typing import (
@@ -70,6 +71,8 @@ __all__ = [
     "propagate_runtime",
 ]
 
+Ts = TypeVarTuple("Ts")
+
 # ── ContextVars ───────────────────────────────────────────────────────────────
 
 # Holds the TypeVar -> concrete-type mapping while a specialised instance is
@@ -97,34 +100,273 @@ _runtime_alias_ctx: ContextVar[GenericAlias | None] = ContextVar(
     "_runtime_alias_ctx", default=None
 )
 
-Ts = TypeVarTuple("Ts")
+# Sentinel for the "no more args" check in _build_mapping
+_SENTINEL: object = object()
 
 
-## ── Internal helpers — type introspection ────────────────────────────────────
+## ── Internal helpers — mapping construction ──────────────────────────────────
 
 
-def _has_typevars(tp: Any) -> bool:
+def _build_mapping(params: tuple[Any, ...], args: tuple[Any, ...]) -> dict[Any, Any]:
     """
-    Return ``True`` if ``tp`` contains any unbound ``TypeVar`` or
-    ``TypeVarTuple`` at any nesting depth.
+    Zip type parameters -> type arguments.
 
-    Used as a fast-path guard in ``__runtime_generic_post_init__`` to skip
-    child propagation when the resolved annotation is already fully concrete.
-    Propagating into a fully-concrete child is always a no-op, and skipping
-    it avoids traversing large containers (e.g. a dataset of arrays) on every
-    construction.
-
-    Examples::
-
-        _has_typevars(int)            # False
-        _has_typevars(list[int])      # False
-        _has_typevars(T)              # True
-        _has_typevars(list[T])        # True
-        _has_typevars(tuple[int, T])  # True
+    Handles plain TypeVars (with optional defaults) and TypeVarTuple (greedy).
     """
+    mapping: dict[Any, Any] = {}
+    it = iter(args)
+
+    for idx, param in enumerate(params):
+        if isinstance(param, TypeVarTuple):
+            remaining_params = len(params) - idx - 1
+            remaining_args = tuple(it)
+            size = len(remaining_args) - remaining_params
+            if size < 0:
+                raise TypeError("Not enough type arguments")
+            mapping[param] = remaining_args[:size]
+            it = iter(remaining_args[size:])
+        else:
+            try:
+                mapping[param] = next(it)
+            except StopIteration:
+                default = getattr(param, "__default__", NoDefault)
+                if default is not NoDefault:
+                    mapping[param] = default
+                else:
+                    raise TypeError(f"Missing type argument for {param!r}") from None
+
+    if next(it, _SENTINEL) is not _SENTINEL:
+        raise TypeError("Too many type arguments")
+    return mapping
+
+
+@lru_cache(maxsize=256)
+def _collect_inherited_bindings_cached(
+    cls: type, known_key: tuple[Any, ...]
+) -> tuple[tuple[Any, Any], ...]:
+    """
+    Walk cls's full MRO and collect TypeVar bindings from every specialised
+    generic base.  Returns a tuple of ``(TypeVar, type)`` pairs so the result
+    is hashable and cache-friendly.
+
+    ``known_key`` encodes the caller's existing mapping as a flat
+    ``(k, v, k, v, …)`` tuple so the cache key is correct for different
+    specialisations of the same class (e.g. ``Pair[int, str]`` vs
+    ``Pair[float, bytes]``).
+    """
+    # Reconstruct the mapping the caller already has so we can resolve
+    # inherited args against it.
+    known: dict[Any, Any] = dict(zip(known_key[::2], known_key[1::2]))
+    extra: dict[Any, Any] = {}
+
+    for klass in cls.__mro__:
+        for base in getattr(klass, "__orig_bases__", ()):
+            base_origin = get_origin(base)
+            if base_origin is None:
+                continue
+            base_params = getattr(base_origin, "__parameters__", ())
+            base_args = get_args(base)
+            if not base_params or not base_args:
+                continue
+            merged = known | extra  # more-derived bindings win
+            resolved_args = tuple(_substitute(arg, merged) for arg in base_args)
+            try:
+                inherited = _build_mapping(base_params, resolved_args)
+            except TypeError:
+                continue
+            for k, v in inherited.items():
+                if k not in known and k not in extra:
+                    extra[k] = v
+
+    return tuple(chain.from_iterable(extra.items()))
+
+
+def _augment_with_inherited(cls: type, mapping: dict[Any, Any]) -> None:
+    """
+    Mutate ``mapping`` in-place by adding all inherited TypeVar bindings
+    not already present.  More-derived (outer) bindings always win.
+
+    Uses a per-(cls, mapping) LRU cache so repeated constructions of the
+    same specialised type pay only one MRO walk.
+    """
+    # Build the cache key from the current mapping contents.
+    known_key: tuple[Any, ...] = tuple(chain.from_iterable(mapping.items()))
+    pairs = _collect_inherited_bindings_cached(cls, known_key)
+    # pairs is a flat (k, v, k, v, …) sequence.
+    it = iter(pairs)
+    for k, v in zip(it, it):
+        mapping.setdefault(k, v)
+
+
+## ── Internal helpers — alias -> mapping ──────────────────────────────────────
+
+
+def _mapping_from_alias(alias: Any, cls: Any) -> dict[Any, Any]:
+    """
+    Build a fully-augmented TypeVar -> type mapping from a specialised alias,
+    then fill in any remaining bindings from cls's inheritance chain.
+    """
+    origin = get_origin(alias) or alias
+    args = get_args(alias)
+    parameters: tuple[Any, ...] = getattr(origin, "__parameters__", ())
+    mapping = _build_mapping(parameters, args)
+    _augment_with_inherited(cls, mapping)
+    return mapping
+
+
+## ── Internal helpers — substitution & runtime context ────────────────────────
+
+
+def _substitute(tp: Any, mapping: dict[Any, Any]) -> Any:
+    """Recursively substitute TypeVars in ``tp`` using ``mapping``."""
+    if not mapping:
+        return tp
+
     if isinstance(tp, (TypeVar, TypeVarTuple)):
-        return True
-    return any(_has_typevars(a) for a in get_args(tp))
+        return mapping.get(tp, tp)
+
+    origin = get_origin(tp)
+    if origin is None:
+        return tp
+
+    args = get_args(tp)
+
+    if origin is Unpack:
+        inner = _substitute(args[0], mapping)
+        return inner if isinstance(inner, tuple) else Unpack[inner]  # pyright: ignore[reportUnknownVariableType]
+
+    resolved: list[Any] = []
+    changed = False
+    for arg in args:
+        val = _substitute(arg, mapping)
+        if val is not arg:
+            changed = True
+        resolved.extend(val if isinstance(val, tuple) else (val,))  # pyright: ignore[reportUnknownArgumentType]
+
+    # Avoid reconstructing the alias when nothing actually changed.
+    if not changed:
+        return tp
+
+    try:
+        return origin[resolved[0] if len(resolved) == 1 else tuple(resolved)]
+    except TypeError:
+        return tp
+
+
+def _resolve_runtime_ctx(tp: Any) -> Any:
+    """
+    Resolve ``tp`` against the active ContextVar mapping set during instantiation.
+    """
+    ctx = _runtime_typevar_ctx.get({})
+
+    if isinstance(tp, TypeVar):
+        return ctx.get(tp, tp)
+
+    if isinstance(tp, tuple):
+        resolved = tuple(_resolve_runtime_ctx(arg) for arg in tp)  # pyright: ignore[reportUnknownVariableType]
+        return resolved if resolved != tp else tp  # pyright: ignore[reportUnknownVariableType]
+
+    origin = get_origin(tp)
+    if origin is None:
+        return tp
+
+    args = get_args(tp)
+    resolved = tuple(_resolve_runtime_ctx(arg) for arg in args)
+
+    if resolved == args:
+        return tp
+
+    try:
+        return origin[resolved[0] if len(resolved) == 1 else tuple(resolved)]
+    except TypeError:
+        return tp
+
+
+## ── Internal helpers — graph traversal ───────────────────────────────────────
+
+
+def _bfs_upto(
+    origin: Any, mapping: dict[Any, Any], upto: type
+) -> tuple[Any, ...] | None:
+    """
+    BFS over the inheritance graph starting from ``origin`` with ``mapping``.
+    Returns the resolved args at the first node whose origin is ``upto``,
+    or ``None`` if ``upto`` is not reachable.
+    """
+    queue: deque[tuple[Any, dict[Any, Any]]] = deque([(origin, mapping)])
+    visited: set[Any] = set()
+
+    while queue:
+        current, cur_mapping = queue.popleft()
+        if current in visited:
+            continue
+        visited.add(current)
+        if not hasattr(current, "__orig_bases__"):
+            continue
+
+        for base in get_original_bases(current):  # type: ignore[arg-type]
+            base_origin = get_origin(base) or base
+            resolved = _substitute(base, cur_mapping)
+            resolved_origin = get_origin(resolved) or resolved
+
+            if resolved_origin is upto:
+                return get_args(resolved)
+
+            parent_params = getattr(base_origin, "__parameters__", ())
+            parent_args = get_args(resolved)
+
+            if not parent_params and not parent_args:
+                queue.append((base_origin, cur_mapping))
+            elif not parent_params:
+                # Builtin generic (e.g. list[int]) — no param schema, enqueue bare
+                queue.append((base_origin, {}))
+            else:
+                try:
+                    child_mapping = _build_mapping(parent_params, parent_args)
+                except TypeError:
+                    continue
+                queue.append((base_origin, child_mapping))
+
+    return None
+
+
+def _walk_to_generic_anchor(origin: Any, mapping: dict[Any, Any]) -> tuple[Any, ...]:
+    """
+    Walk up the first-generic-base chain to the bare ``Generic[...]`` anchor,
+    then flatten mapping values into an args tuple.
+    """
+    current = origin
+    while hasattr(current, "__orig_bases__"):
+        for base in get_original_bases(current):  # type: ignore[arg-type]
+            base_origin = get_origin(base) or base
+            resolved = _substitute(base, mapping)
+
+            if base_origin is Generic:
+                return tuple(
+                    chain.from_iterable(
+                        v if isinstance(v, tuple) else (v,)
+                        for v in mapping.values()  # pyright: ignore[reportUnknownArgumentType]
+                    )
+                )
+
+            parent_params = getattr(base_origin, "__parameters__", ())
+            parent_args = get_args(resolved)
+
+            if not parent_params:
+                continue  # skip plain mixins and builtins with no param schema
+
+            mapping = _build_mapping(parent_params, parent_args)
+            current = base_origin
+            break
+        else:
+            break
+
+    return tuple(
+        chain.from_iterable(
+            v if isinstance(v, tuple) else (v,)
+            for v in mapping.values()  # pyright: ignore[reportUnknownArgumentType]
+        )
+    )
 
 
 ## ── Runtime Generic ──────────────────────────────────────────────────────────
@@ -281,14 +523,6 @@ class RuntimeGeneric(Generic[Unpack[Ts]]):
         self.__runtime_generic_pre_init__(alias)
         mapping = _mapping_from_alias(alias, type(self))
         for val, resolved in self.__runtime_generic_iter_children__(mapping):
-            # Skip propagation when the resolved annotation still contains
-            # unbound TypeVars AND the value is not already a RuntimeGeneric
-            # instance.  If the value is a RuntimeGeneric, we must always
-            # propagate regardless of the annotation — the child needs its own
-            # __runtime_generic_post_init__ fired with the resolved alias.
-            # If the value is not a RuntimeGeneric (e.g. a plain int, a torch
-            # Tensor, a large list of non-generic objects), propagation is
-            # always a no-op regardless of annotation, so skip it cheaply.
             if not isinstance(val, RuntimeGeneric):
                 continue
             propagate_runtime(val, resolved)
@@ -379,237 +613,6 @@ class _RuntimeGenericAlias(GenericAlias):
         return obj  # pyright: ignore[reportUnknownVariableType]
 
 
-## ── Internal helpers — mapping construction ──────────────────────────────────
-
-
-def _mapping_from_alias(alias: Any, cls: Any) -> dict[Any, Any]:
-    """
-    Build a fully-augmented TypeVar -> type mapping from a specialised alias,
-    then fill in any remaining bindings from cls's inheritance chain.
-    """
-    origin = get_origin(alias) or alias
-    args = get_args(alias)
-    parameters: tuple[Any, ...] = getattr(origin, "__parameters__", ())
-    mapping = _build_mapping(parameters, args)
-    _augment_with_inherited(cls, mapping)
-    return mapping
-
-
-def _build_mapping(params: tuple[Any, ...], args: tuple[Any, ...]) -> dict[Any, Any]:
-    """
-    Zip type parameters -> type arguments.
-
-    Handles plain TypeVars (with optional defaults) and TypeVarTuple (greedy).
-    """
-    mapping: dict[Any, Any] = {}
-    it = iter(args)
-
-    for idx, param in enumerate(params):
-        if isinstance(param, TypeVarTuple):
-            remaining_params = len(params) - idx - 1
-            remaining_args = tuple(it)
-            size = len(remaining_args) - remaining_params
-            if size < 0:
-                raise TypeError("Not enough type arguments")
-            mapping[param] = remaining_args[:size]
-            it = iter(remaining_args[size:])
-        else:
-            try:
-                mapping[param] = next(it)
-            except StopIteration:
-                default = getattr(param, "__default__", NoDefault)
-                if default is not NoDefault:
-                    mapping[param] = default
-                else:
-                    raise TypeError(f"Missing type argument for {param!r}") from None
-
-    if any(True for _ in it):
-        raise TypeError("Too many type arguments")
-    return mapping
-
-
-def _collect_inherited_bindings(cls: type, known: dict[Any, Any]) -> dict[Any, Any]:
-    """
-    Walk cls's full MRO and collect TypeVar bindings from every specialised
-    generic base not already present in `known`.
-    """
-    extra: dict[Any, Any] = {}
-    for klass in cls.__mro__:
-        for base in getattr(klass, "__orig_bases__", ()):
-            base_origin = get_origin(base)
-            if base_origin is None:
-                continue
-            base_params = getattr(base_origin, "__parameters__", ())
-            base_args = get_args(base)
-            if not base_params or not base_args:
-                continue
-            merged = known | extra  # more-derived bindings win
-            resolved_args = tuple(_substitute(arg, merged) for arg in base_args)
-            try:
-                inherited = _build_mapping(base_params, resolved_args)
-            except TypeError:
-                continue
-            for k, v in inherited.items():
-                if k not in known and k not in extra:
-                    extra[k] = v
-    return extra
-
-
-def _augment_with_inherited(cls: type, mapping: dict[Any, Any]) -> None:
-    """
-    Mutate `mapping` in-place, adding all inherited TypeVar bindings
-    not already present.  More-derived (outer) bindings always win.
-    """
-    mapping.update(_collect_inherited_bindings(cls, mapping))
-
-
-## ── Internal helpers — substitution & runtime context ────────────────────────
-
-
-def _substitute(tp: Any, mapping: dict[Any, Any]) -> Any:
-    """Recursively substitute TypeVars in `tp` using `mapping`."""
-    if not mapping:
-        return tp
-
-    if isinstance(tp, (TypeVar, TypeVarTuple)):
-        return mapping.get(tp, tp)
-
-    origin = get_origin(tp)
-    if origin is None:
-        return tp
-
-    args = get_args(tp)
-
-    if origin is Unpack:
-        inner = _substitute(args[0], mapping)
-        return inner if isinstance(inner, tuple) else Unpack[inner]  # pyright: ignore[reportUnknownVariableType]
-
-    resolved: list[Any] = []
-    for arg in args:
-        val = _substitute(arg, mapping)
-        resolved.extend(val if isinstance(val, tuple) else (val,))  # pyright: ignore[reportUnknownArgumentType]
-
-    try:
-        return origin[resolved[0] if len(resolved) == 1 else tuple(resolved)]
-    except TypeError:
-        return tp
-
-
-def _resolve_runtime_ctx(tp: Any) -> Any:
-    """
-    Resolve `tp` against the active ContextVar mapping set during instantiation.
-    """
-    ctx = _runtime_typevar_ctx.get({})
-
-    if isinstance(tp, TypeVar):
-        return ctx.get(tp, tp)
-
-    if isinstance(tp, tuple):
-        return tuple(_resolve_runtime_ctx(arg) for arg in tp)  # pyright: ignore[reportUnknownVariableType]
-
-    origin = get_origin(tp)
-    if origin is None:
-        return tp
-
-    args = get_args(tp)
-    resolved = tuple(_resolve_runtime_ctx(arg) for arg in args)
-
-    if resolved == args:
-        return tp
-
-    try:
-        return origin[resolved[0] if len(resolved) == 1 else tuple(resolved)]
-    except TypeError:
-        return tp
-
-
-## ── Internal helpers — graph traversal ───────────────────────────────────────
-
-
-def _bfs_upto(
-    origin: Any, mapping: dict[Any, Any], upto: type
-) -> tuple[Any, ...] | None:
-    """
-    BFS over the inheritance graph starting from `origin` with `mapping`.
-    Returns the resolved args at the first node whose origin is `upto`,
-    or None if `upto` is not reachable.
-    """
-    queue: deque[tuple[Any, dict[Any, Any]]] = deque([(origin, mapping)])
-    visited: set[Any] = set()
-
-    while queue:
-        current, cur_mapping = queue.popleft()
-        if current in visited:
-            continue
-        visited.add(current)
-        if not hasattr(current, "__orig_bases__"):
-            continue
-
-        for base in get_original_bases(current):  # type: ignore[arg-type]
-            base_origin = get_origin(base) or base
-            resolved = _substitute(base, cur_mapping)
-            resolved_origin = get_origin(resolved) or resolved
-
-            if resolved_origin is upto:
-                return get_args(resolved)
-
-            parent_params = getattr(base_origin, "__parameters__", ())
-            parent_args = get_args(resolved)
-
-            if not parent_params and not parent_args:
-                queue.append((base_origin, cur_mapping))
-            elif not parent_params:
-                # Builtin generic (e.g. list[int]) — no param schema, enqueue bare
-                queue.append((base_origin, {}))
-            else:
-                try:
-                    child_mapping = _build_mapping(parent_params, parent_args)
-                except TypeError:
-                    continue
-                queue.append((base_origin, child_mapping))
-
-    return None
-
-
-def _walk_to_generic_anchor(origin: Any, mapping: dict[Any, Any]) -> tuple[Any, ...]:
-    """
-    Walk up the first-generic-base chain to the bare Generic[...] anchor,
-    then flatten mapping values into an args tuple.
-    """
-    current = origin
-    while hasattr(current, "__orig_bases__"):
-        for base in get_original_bases(current):  # type: ignore[arg-type]
-            base_origin = get_origin(base) or base
-            resolved = _substitute(base, mapping)
-
-            if base_origin is Generic:
-                return tuple(
-                    chain.from_iterable(
-                        v if isinstance(v, tuple) else (v,)
-                        for v in mapping.values()  # pyright: ignore[reportUnknownArgumentType]
-                    )
-                )
-
-            parent_params = getattr(base_origin, "__parameters__", ())
-            parent_args = get_args(resolved)
-
-            if not parent_params:
-                continue  # skip plain mixins and builtins with no param schema
-
-            mapping = _build_mapping(parent_params, parent_args)
-            current = base_origin
-            break
-        else:
-            break
-
-    return tuple(
-        chain.from_iterable(
-            v if isinstance(v, tuple) else (v,)
-            for v in mapping.values()  # pyright: ignore[reportUnknownArgumentType]
-        )
-    )
-
-
 ## ── Public API ───────────────────────────────────────────────────────────────
 
 
@@ -672,18 +675,14 @@ def get_runtime_args(
         from that specific ancestor.  Useful when a class inherits from
         multiple generic bases.
     """
+    mapping = get_runtime_mapping(tp)
     origin = get_runtime_origin(tp)
-    args = get_args(tp)
 
     if not hasattr(origin, "__orig_bases__"):
-        return args  # builtin generics: list[int], dict[str, int], etc.
-
-    parameters: tuple[Any, ...] = getattr(origin, "__parameters__", ())
-    mapping = _build_mapping(parameters, args)
-    _augment_with_inherited(origin, mapping)
+        return get_args(tp)  # builtin generics: list[int], dict[str, int], etc.
 
     if upto is not None:
-        return _bfs_upto(origin, mapping, upto) or args
+        return _bfs_upto(origin, mapping, upto) or get_args(tp)
 
     return _walk_to_generic_anchor(origin, mapping)
 

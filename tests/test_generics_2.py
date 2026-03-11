@@ -20,7 +20,6 @@ import pytest
 from typingkit.core.generics import (
     RuntimeGeneric,
     _build_mapping,
-    _collect_inherited_bindings,
     _substitute,
     get_runtime_args,
     propagate_runtime,
@@ -127,35 +126,6 @@ class TestSubstitute:
     def test_substitution_with_literal(self):
         result = _substitute(list[T], {T: Literal[5]})
         assert result == list[Literal[5]]
-
-
-class TestCollectInheritedBindings:
-    def test_no_generic_bases(self):
-        class Plain: ...
-
-        result = _collect_inherited_bindings(Plain, {})
-        assert result == {}
-
-    def test_single_specialized_base(self):
-        class Base(RuntimeGeneric[A, B]): ...
-
-        class Child(Base[int, B]): ...
-
-        # Simulate: A is already bound to int
-        result = _collect_inherited_bindings(Child, {A: int})
-        # B should remain as-is (not yet bound)
-        assert A not in result  # already in known, won't be overwritten
-
-    def test_does_not_overwrite_known(self):
-        class Base(RuntimeGeneric[A]): ...
-
-        class Child(Base[int]): ...
-
-        known = {A: str}  # A already bound externally
-        result = _collect_inherited_bindings(Child, known)
-        # known should not be mutated, and A shouldn't appear in extra
-        assert A not in result
-        assert known[A] is str  # unchanged
 
 
 class TestPropagateRuntime:
