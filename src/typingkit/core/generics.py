@@ -443,8 +443,8 @@ def _collect_inherited_bindings(cls: type, known: dict[Any, Any]) -> dict[Any, A
             base_args = get_args(base)
             if not base_params or not base_args:
                 continue
-            merged = {**known, **extra}  # more-derived bindings win
-            resolved_args = tuple(_substitute(a, merged) for a in base_args)
+            merged = known | extra  # more-derived bindings win
+            resolved_args = tuple(_substitute(arg, merged) for arg in base_args)
             try:
                 inherited = _build_mapping(base_params, resolved_args)
             except TypeError:
@@ -455,7 +455,7 @@ def _collect_inherited_bindings(cls: type, known: dict[Any, Any]) -> dict[Any, A
     return extra
 
 
-def _augment_with_inherited(cls: Any, mapping: dict[Any, Any]) -> None:
+def _augment_with_inherited(cls: type, mapping: dict[Any, Any]) -> None:
     """
     Mutate `mapping` in-place, adding all inherited TypeVar bindings
     not already present.  More-derived (outer) bindings always win.
