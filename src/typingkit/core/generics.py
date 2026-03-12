@@ -412,16 +412,18 @@ def mapping_from_alias(alias: Any, cls: Any) -> dict[Any, Any]:
 # ── Options resolution helper ─────────────────────────────────────────────────
 
 
-def _get_class_options(cls: type) -> RuntimeOptions:
-    """
-    Walk the MRO and return the first ``_runtime_options_`` found, or the
-    default ``RuntimeOptions()`` if none is set.
-    """
+@lru_cache(maxsize=256)
+def _find_class_options(cls: type) -> RuntimeOptions | None:
+    """Walk the MRO and return the first ``_runtime_options_`` found."""
     for klass in cls.__mro__:
         opts = klass.__dict__.get("_runtime_options_")
         if opts is not None:
-            return opts  # type: ignore[return-value]
-    return global_default_runtime_options
+            return opts
+    return None
+
+
+def _get_class_options(cls: type) -> RuntimeOptions:
+    return _find_class_options(cls) or global_default_runtime_options
 
 
 # ── RuntimeGeneric ────────────────────────────────────────────────────────────

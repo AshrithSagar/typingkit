@@ -126,9 +126,9 @@ class RuntimeOptions:
         # Global default acts as a master override — if it disables validation,
         # nothing can re-enable it except explicitly passing scoped().
         effective = class_options
-        if not global_default_runtime_options.validate:
+        if not global_default_runtime_options.validate and effective.validate:
             effective = replace(effective, validate=False)
-        if not global_default_runtime_options.propagate:
+        if not global_default_runtime_options.propagate and effective.validate:
             effective = replace(effective, propagate=False)
 
         scoped = _scoped_options.get()
