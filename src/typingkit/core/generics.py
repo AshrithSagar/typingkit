@@ -75,7 +75,7 @@ from typing import (
 
 from typing_extensions import TypeForm
 
-from typingkit.core._options import RuntimeOptions
+from typingkit.core._options import RuntimeOptions, global_default_runtime_options
 
 __all__ = [
     "RuntimeGeneric",
@@ -411,8 +411,6 @@ def mapping_from_alias(alias: Any, cls: Any) -> dict[Any, Any]:
 
 # ── Options resolution helper ─────────────────────────────────────────────────
 
-_DEFAULT_OPTIONS = RuntimeOptions()
-
 
 def _get_class_options(cls: type) -> RuntimeOptions:
     """
@@ -423,7 +421,7 @@ def _get_class_options(cls: type) -> RuntimeOptions:
         opts = klass.__dict__.get("_runtime_options_")
         if opts is not None:
             return opts  # type: ignore[return-value]
-    return _DEFAULT_OPTIONS
+    return global_default_runtime_options
 
 
 # ── RuntimeGeneric ────────────────────────────────────────────────────────────
@@ -474,7 +472,7 @@ class RuntimeGeneric(Generic[Unpack[Ts]]):
     _runtime_validated = _RuntimeValidatedDescriptor()
 
     # Default options — overridden per-subclass via __init_subclass__.
-    _runtime_options_: RuntimeOptions = _DEFAULT_OPTIONS
+    _runtime_options_: RuntimeOptions = global_default_runtime_options
 
     def __init_subclass__(
         cls,

@@ -173,3 +173,18 @@ class _RuntimeOptionsScopedCtx:
 
     async def __aexit__(self, *args: Any) -> None:
         self.__exit__(*args)
+
+
+# ── Global default ────────────────────────────────────────────────────────────
+
+global_default_runtime_options: RuntimeOptions = RuntimeOptions()
+
+
+def set_global_default_runtime_options(options: RuntimeOptions) -> None:
+    global global_default_runtime_options
+    global_default_runtime_options = options
+
+
+def reset_global_default_runtime_options() -> None:
+    global global_default_runtime_options
+    global_default_runtime_options = RuntimeOptions()

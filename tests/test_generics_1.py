@@ -8,7 +8,6 @@ Tests for RuntimeGeneric core functionality - 1
 # pyright: reportInvalidTypeArguments = false
 # pyright: reportUnknownVariableType = false
 
-from types import GenericAlias
 from typing import Any, TypeVar, TypeVarTuple
 
 import pytest
