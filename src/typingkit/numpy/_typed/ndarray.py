@@ -354,7 +354,7 @@ class TypedNDArray(
             ``TypedNDArray[tuple[Literal[3]], np.dtype[np.int32]]``.
         """
         if getattr(self, "_runtime_validated", False):
-            return  # already validated at construction time, skip re-validation
+            return  # Already validated at construction time, skip re-validation
         self._runtime_validated = True
 
         args = get_runtime_args(alias)

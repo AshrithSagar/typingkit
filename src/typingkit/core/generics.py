@@ -7,33 +7,27 @@ Public API
 RuntimeGeneric               – base class for runtime-inspectable generic types
 get_runtime_args             – like typing.get_args, but walks the inheritance graph
 get_runtime_mapping          – TypeVar -> concrete-type dict for a specialised type
-get_runtime_origin           – like typing.get_origin, resolves through RuntimeGeneric
+get_runtime_origin           – like typing.get_origin, but never returns None
 is_runtime_specialised       – True when every TypeVar in the type is concretely bound
 resolve_runtime_annotation   – substitute TypeVars in an arbitrary annotation
 propagate_runtime            – push a resolved alias into a RuntimeGeneric instance
+clear_runtime_caches         – invalidate all alias-keyed LRU caches
 
-Framework hooks
----------------
-The lifecycle of a ``RuntimeGeneric`` instance during specialised construction is::
+Construction lifecycle
+----------------------
+::
 
     _RuntimeGenericAlias.__call__
-        sets _runtime_typevar_ctx   (TypeVar -> type mapping, for __class_getitem__)
-        sets _runtime_alias_ctx     (the full alias, for exotic constructors)
-        -> __new__ / __init__        (normal Python construction path)
-            -> __runtime_generic_pre_init__   (hook: fired just before post-init)
-            -> __runtime_generic_post_init__  (hook: validate + propagate to children)
+        sets _runtime_typevar_ctx   (TypeVar -> type mapping)
+        sets _runtime_alias_ctx     (full alias, for exotic constructors)
+        -> __new__ / __init__
+            -> __runtime_generic_post_init__   (validate + propagate to children)
         resets both ContextVars
 
-For classes whose construction bypasses ``__call__`` (e.g. ``np.ndarray`` subclasses
-that are built via ``.view()`` and ``__array_finalize__``), subclasses should:
-
-1. Override ``__array_finalize__`` (or equivalent exotic hook).
-2. Call ``self.__runtime_generic_pending_alias__()`` to consume the stashed alias.
-3. Manually invoke ``self.__runtime_generic_post_init__(alias)`` with it.
-
-The ``__runtime_generic_pending_alias__`` classmethod resets the ContextVar on read,
-preventing double-firing if the exotic hook is called more than once (e.g. numpy
-calls ``__array_finalize__`` on every slice / view).
+For exotic construction paths (e.g. np.ndarray subclasses built via .view()),
+override the exotic hook (e.g. __array_finalize__), call
+``self.__runtime_generic_pending_alias__()`` to consume the stashed alias, and
+fire ``self.__runtime_generic_post_init__(alias)`` manually.
 """
 # src/typingkit/core/generics.py
 
@@ -69,6 +63,7 @@ __all__ = [
     "is_runtime_specialised",
     "resolve_runtime_annotation",
     "propagate_runtime",
+    "clear_runtime_caches",
 ]
 
 Ts = TypeVarTuple("Ts")
@@ -80,35 +75,25 @@ _runtime_alias_ctx: ContextVar[GenericAlias | None] = ContextVar(
     "_runtime_alias_ctx", default=None
 )
 
-# Module-level bound methods — avoids per-call attribute lookup on hot paths.
-_get_typevar_ctx = _runtime_typevar_ctx.get
+_get_typevar_ctx = _runtime_typevar_ctx.get  # bound method, avoids per-call lookup
 _set_alias_ctx = _runtime_alias_ctx.set
 
-# Shared empty dict used as a sentinel/default; never mutated.
-_EMPTY_CTX: dict[Any, Any] = {}
-
+_EMPTY_CTX: dict[Any, Any] = {}  # shared sentinel; never mutated
 _SENTINEL: object = object()
-
-# frozenset membership is ~2x faster than isinstance(x, (TypeVar, TypeVarTuple))
-# on the negative (concrete-type) path, which dominates _substitute's inner loop.
 _TV_TYPES: frozenset[type] = frozenset({TypeVar, TypeVarTuple})
 
 
-## ── Internal helpers — mapping construction ──────────────────────────────────
+# ── Mapping construction ──────────────────────────────────────────────────────
 
 
 def _build_mapping(
     params: tuple[Any, ...], args: tuple[Any, ...]
 ) -> tuple[dict[Any, Any], bool]:
     """
-    Zip type parameters -> type arguments.
+    Zip type parameters -> type arguments, handling TypeVarTuple (greedy).
 
-    Handles plain TypeVars (with optional defaults) and TypeVarTuple (greedy).
-
-    Returns ``(mapping, has_tvt_value)`` where ``has_tvt_value`` is ``True``
-    when a ``TypeVarTuple`` parameter was bound.  Callers use this flag to
-    choose between the fast ``tuple(vals)`` flatten and the slower
-    ``chain.from_iterable`` flatten — a ~15x difference in the common case.
+    Returns ``(mapping, has_tvt_value)``; the flag lets callers take the fast
+    ``tuple(vals)`` flatten path when no TypeVarTuple expansion is present.
     """
     mapping: dict[Any, Any] = {}
     has_tvt_value = False
@@ -144,14 +129,7 @@ def _build_mapping(
 def _flatten_mapping_values(
     mapping: dict[Any, Any], has_tvt_value: bool
 ) -> tuple[Any, ...]:
-    """
-    Flatten ``mapping.values()`` into a tuple, expanding any ``TypeVarTuple``
-    values (stored as a tuple of types) into the output sequence.
-
-    When ``has_tvt_value`` is ``False`` (the common case) every value is a
-    single type; ``tuple(mapping.values())`` is used — ~15x faster than the
-    ``chain.from_iterable`` path needed for ``TypeVarTuple`` expansions.
-    """
+    """Flatten mapping values, expanding TypeVarTuple tuples into the sequence."""
     if not has_tvt_value:
         return tuple(mapping.values())
     return tuple(
@@ -163,19 +141,15 @@ def _flatten_mapping_values(
 
 
 @lru_cache(maxsize=256)
-def _collect_inherited_bindings_cached(
+def _collect_inherited_bindings(
     cls: type, known_key: tuple[tuple[Any, Any], ...]
 ) -> tuple[tuple[Any, Any], ...]:
     """
-    Walk ``cls``'s full MRO and collect TypeVar bindings from every specialised
-    generic base not already present in the caller's mapping.
+    Walk the full MRO collecting TypeVar bindings from specialised generic bases
+    not already present in ``known_key``.
 
-    Returns a tuple of ``(TypeVar, type)`` pairs (extra bindings only) so the
-    result is hashable and cache-friendly.
-
-    ``known_key`` is ``tuple(mapping.items())`` — using items-tuples directly
-    (rather than a flat alternating sequence) is ~2x cheaper to construct and
-    equally hashable.
+    Cached by (cls, known_key) so repeated constructions of the same specialised
+    type pay only one MRO walk.
     """
     known: dict[Any, Any] = dict(known_key)
     extra: dict[Any, Any] = {}
@@ -192,7 +166,7 @@ def _collect_inherited_bindings_cached(
             base_args = get_args(base)
             if not base_params or not base_args:
                 continue
-            merged = known | extra  # more-derived bindings win
+            merged = known | extra
             resolved_args = tuple(_substitute(arg, merged) for arg in base_args)
             try:
                 inherited, _ = _build_mapping(base_params, resolved_args)
@@ -206,19 +180,12 @@ def _collect_inherited_bindings_cached(
 
 
 def _augment_with_inherited(cls: type, mapping: dict[Any, Any]) -> None:
-    """
-    Mutate ``mapping`` in-place by adding all inherited TypeVar bindings
-    not already present.  More-derived (outer) bindings always win.
-
-    Uses a per-(cls, mapping) LRU cache so repeated constructions of the
-    same specialised type pay only one MRO walk.
-    """
-    known_key: tuple[tuple[Any, Any], ...] = tuple(mapping.items())
-    for k, v in _collect_inherited_bindings_cached(cls, known_key):
+    """Mutate ``mapping`` in-place with inherited bindings (more-derived wins)."""
+    for k, v in _collect_inherited_bindings(cls, tuple(mapping.items())):
         mapping.setdefault(k, v)
 
 
-## ── Internal helpers — substitution & runtime context ────────────────────────
+# ── Substitution ──────────────────────────────────────────────────────────────
 
 
 def _substitute(tp: Any, mapping: dict[Any, Any]) -> Any:
@@ -226,10 +193,7 @@ def _substitute(tp: Any, mapping: dict[Any, Any]) -> Any:
     if not mapping:
         return tp
 
-    # frozenset membership on type() is ~2x faster than isinstance on the
-    # dominant negative path (plain concrete types like int, str).
-    tp_type = type(tp)  # pyright: ignore[reportUnknownVariableType]
-    if tp_type in _TV_TYPES:
+    if type(tp) in _TV_TYPES:  # frozenset check ~2x faster than isinstance on miss
         return mapping.get(tp, tp)
 
     origin = get_origin(tp)
@@ -253,9 +217,8 @@ def _substitute(tp: Any, mapping: dict[Any, Any]) -> Any:
         else:
             resolved.append(val)
 
-    # Skip alias reconstruction when nothing changed — avoids origin[...] overhead.
     if not changed:
-        return tp
+        return tp  # avoid origin[...] reconstruction overhead
 
     try:
         return origin[resolved[0] if len(resolved) == 1 else tuple(resolved)]
@@ -264,9 +227,7 @@ def _substitute(tp: Any, mapping: dict[Any, Any]) -> Any:
 
 
 def _resolve_runtime_ctx(tp: Any) -> Any:
-    """
-    Resolve ``tp`` against the active ContextVar mapping set during instantiation.
-    """
+    """Resolve ``tp`` against the active construction-time ContextVar mapping."""
     ctx = _get_typevar_ctx(_EMPTY_CTX)
 
     if isinstance(tp, TypeVar):
@@ -292,18 +253,13 @@ def _resolve_runtime_ctx(tp: Any) -> Any:
         return tp
 
 
-## ── Internal helpers — graph traversal ───────────────────────────────────────
+# ── Graph traversal ───────────────────────────────────────────────────────────
 
 
 def _bfs_upto(
     origin: Any, mapping: dict[Any, Any], upto: type
 ) -> tuple[Any, ...] | None:
-    """
-    BFS over the inheritance graph starting from ``origin`` with ``mapping``.
-
-    Returns the resolved args at the first node whose origin is ``upto``,
-    or ``None`` if ``upto`` is not reachable.
-    """
+    """BFS the inheritance graph from ``origin``; return args at ``upto``, or None."""
     queue: deque[tuple[Any, dict[Any, Any]]] = deque([(origin, mapping)])
     visited: set[Any] = set()
 
@@ -312,8 +268,7 @@ def _bfs_upto(
         if current in visited:
             continue
         visited.add(current)
-        orig_bases = getattr(current, "__orig_bases__", None)
-        if orig_bases is None:
+        if getattr(current, "__orig_bases__", None) is None:
             continue
 
         for base in get_original_bases(current):  # type: ignore[arg-type]
@@ -330,7 +285,6 @@ def _bfs_upto(
             if not parent_params and not parent_args:
                 queue.append((base_origin, cur_mapping))
             elif not parent_params:
-                # Builtin generic (e.g. list[int]) — no param schema, enqueue bare.
                 queue.append((base_origin, {}))
             else:
                 try:
@@ -345,18 +299,10 @@ def _bfs_upto(
 def _walk_to_generic_anchor(
     origin: Any, mapping: dict[Any, Any], has_tvt_value: bool
 ) -> tuple[Any, ...]:
-    """
-    Walk up the first-generic-base chain to the bare ``Generic[...]`` anchor,
-    then flatten mapping values into an args tuple.
-
-    ``has_tvt_value`` is forwarded from ``_build_mapping`` so
-    ``_flatten_mapping_values`` can take the fast ``tuple(vals)`` path when
-    no ``TypeVarTuple`` expansions are present.
-    """
+    """Walk up to the bare Generic[...] anchor and return the flattened args tuple."""
     current = origin
     while True:
-        orig_bases = getattr(current, "__orig_bases__", None)
-        if orig_bases is None:
+        if getattr(current, "__orig_bases__", None) is None:
             break
         for base in get_original_bases(current):  # type: ignore[arg-type]
             base_origin = get_origin(base) or base
@@ -366,12 +312,10 @@ def _walk_to_generic_anchor(
                 return _flatten_mapping_values(mapping, has_tvt_value)
 
             parent_params = getattr(base_origin, "__parameters__", ())
-            parent_args = get_args(resolved)
-
             if not parent_params:
-                continue  # skip plain mixins and builtins with no param schema
+                continue
 
-            mapping, has_tvt_value = _build_mapping(parent_params, parent_args)
+            mapping, has_tvt_value = _build_mapping(parent_params, get_args(resolved))
             current = base_origin
             break
         else:
@@ -380,50 +324,53 @@ def _walk_to_generic_anchor(
     return _flatten_mapping_values(mapping, has_tvt_value)
 
 
-## ── Alias-keyed caches ───────────────────────────────────────────────────────
+# ── Alias-keyed caches ────────────────────────────────────────────────────────
 
 
 @lru_cache(maxsize=1024)
-def _cached_get_runtime_args(tp: Any) -> tuple[Any, ...]:
-    """Cached MRO walk for get_runtime_args(tp, upto=None)."""
+def _cached_alias_info(
+    tp: Any,
+) -> tuple[tuple[Any, ...], tuple[tuple[Any, Any], ...]]:
+    """
+    Cached MRO walk returning ``(runtime_args, mapping_items)`` for ``tp``.
+
+    Shared by get_runtime_args and get_runtime_mapping so they pay one walk.
+    """
     origin = get_origin(tp) or tp
     parameters: tuple[Any, ...] = getattr(origin, "__parameters__", ())
     mapping, has_tvt_value = _build_mapping(parameters, get_args(tp))
     _augment_with_inherited(origin, mapping)
-    return _walk_to_generic_anchor(origin, mapping, has_tvt_value)
+    args = _walk_to_generic_anchor(origin, mapping, has_tvt_value)
+    return args, tuple(mapping.items())
 
 
-@lru_cache(maxsize=1024)
-def _cached_get_runtime_mapping(tp: Any) -> tuple[tuple[Any, Any], ...]:
-    """Cached MRO walk for get_runtime_mapping(tp), returned as immutable items tuple."""
-    origin = get_origin(tp) or tp
-    if not hasattr(origin, "__orig_bases__"):
-        return ()
+def mapping_from_alias(alias: Any, cls: Any) -> dict[Any, Any]:
+    """
+    Build a TypeVar -> type mapping from ``alias``, augmented with inherited
+    bindings for ``cls``.  Always returns a fresh dict (safe to mutate).
+    """
+    origin = get_origin(alias) or alias
     parameters: tuple[Any, ...] = getattr(origin, "__parameters__", ())
-    mapping, _ = _build_mapping(parameters, get_args(tp))
-    _augment_with_inherited(origin, mapping)
-    return tuple(mapping.items())
+    mapping, _ = _build_mapping(parameters, get_args(alias))
+    _augment_with_inherited(cls, mapping)
+    return mapping
 
 
-## ── Runtime Generic ──────────────────────────────────────────────────────────
+# ── RuntimeGeneric ────────────────────────────────────────────────────────────
 
 
 class RuntimeGeneric(Generic[Unpack[Ts]]):
     """
-    Base class for generic types that need runtime type-argument introspection.
+    Base class for generic types needing runtime type-argument introspection.
 
-    Subclass this instead of ``Generic`` to gain:
+    Subclass instead of ``Generic`` to gain:
+    - Full TypeVar resolution through the inheritance graph.
+    - Automatic propagation of resolved types to child ``RuntimeGeneric`` instances.
+    - A ``__runtime_generic_post_init__`` hook for custom validation.
+    - Support for exotic construction paths (e.g. ``np.ndarray.view()``) via
+      ``__runtime_generic_pending_alias__``.
 
-    - Full TypeVar -> concrete-type resolution through the inheritance graph.
-    - Automatic propagation of resolved types to child objects stored as
-      attributes (dataclass fields or ``__dict__`` entries).
-    - A clean hook pair (``__runtime_generic_pre_init__`` /
-      ``__runtime_generic_post_init__``) for custom validation or
-      initialisation logic that depends on the concrete type arguments.
-    - Support for 'exotic' construction paths (e.g. ``np.ndarray.view()``)
-      via ``__runtime_generic_pending_alias__``.
-
-    Typical usage::
+    Usage::
 
         T = TypeVar("T")
 
@@ -431,7 +378,7 @@ class RuntimeGeneric(Generic[Unpack[Ts]]):
             def __init__(self, value: T) -> None:
                 self.value = value
 
-        box = Box[int](42)   # __runtime_generic_post_init__ fires automatically
+        box = Box[int](42)
     """
 
     @classmethod
@@ -439,31 +386,20 @@ class RuntimeGeneric(Generic[Unpack[Ts]]):
         # [HACK] Misuses __class_getitem__
         # See https://docs.python.org/3/reference/datamodel.html#the-purpose-of-class-getitem
 
-        # Resolve any TypeVars already bound in the active construction context
-        # (set by ``_RuntimeGenericAlias.__call__``).  This handles cases like
-        # ``Box[T]`` appearing inside another specialised generic.
         item = _resolve_runtime_ctx(item)
         return _RuntimeGenericAlias(cls, item)
-
-    # ── Exotic-constructor support ────────────────────────────────────────────
 
     @classmethod
     def __runtime_generic_pending_alias__(cls) -> GenericAlias | None:
         """
-        Consume and return the alias stashed by ``_RuntimeGenericAlias.__call__``,
-        but only if it belongs to this class (or a subclass of it).
+        Consume and return the alias stashed during construction, but only if
+        it belongs to this class.  Returns None if no alias is pending or if
+        it belongs to a different RuntimeGeneric subclass.
 
-        Returns ``None`` if no alias is pending or if the pending alias belongs
-        to a different ``RuntimeGeneric`` subclass (e.g. a ``TypedList`` whose
-        ``__init__`` iterates a ``TypedNDArray``, triggering numpy's
-        ``__array_finalize__`` while the ``TypedList`` alias is still active).
+        Reset-on-read: the ContextVar is cleared on first consumption, so
+        repeated calls (e.g. numpy's repeated __array_finalize__) see None.
 
-        Reset-on-read: the ContextVar is set to ``None`` on first successful
-        consumption, so repeated exotic-hook calls (e.g. numpy fires
-        ``__array_finalize__`` on every slice and view) see ``None`` and skip
-        cleanly.
-
-        Typical use inside ``__array_finalize__`` (or equivalent hook)::
+        Usage in __array_finalize__ (or equivalent exotic hook)::
 
             def __array_finalize__(self, obj, /):
                 if obj is None:
@@ -481,25 +417,15 @@ class RuntimeGeneric(Generic[Unpack[Ts]]):
         _set_alias_ctx(None)
         return alias
 
-    # ── Child-iteration hook ──────────────────────────────────────────────────
-
     def __runtime_generic_iter_children__(
         self, mapping: dict[Any, Any]
     ) -> Iterable[tuple[Any, Any]]:
         """
-        Yield ``(value, resolved_annotation)`` pairs for runtime propagation.
+        Yield ``(value, resolved_annotation)`` pairs for child propagation.
 
-        The default implementation inspects ``__dict__`` (or dataclass fields)
-        and resolves each annotated attribute's type using ``mapping``.
-
-        Override in subclasses that store children outside ``__dict__`` — for
-        example a container whose elements live in a C buffer.
-
-        Parameters
-        ----------
-        mapping:
-            The fully-resolved TypeVar -> concrete-type dict for this instance,
-            as returned by ``mapping_from_alias``.
+        Default: inspects ``__dict__`` (or dataclass fields) and resolves each
+        annotated attribute's type.  Override for containers storing children
+        outside ``__dict__`` (e.g. a C buffer).
         """
         if is_dataclass(self):
             hints = get_type_hints(type(self))
@@ -513,54 +439,38 @@ class RuntimeGeneric(Generic[Unpack[Ts]]):
                 if name in anns:
                     yield val, _substitute(anns[name], mapping)
 
-    # ── Lifecycle hooks ───────────────────────────────────────────────────────
-
-    def __runtime_generic_pre_init__(self, alias: GenericAlias) -> None:
-        """
-        Called just before ``__runtime_generic_post_init__``.
-
-        Override to perform setup that must happen before children are iterated
-        or validated.  Default implementation is a no-op.
-        """
-
     def __runtime_generic_post_init__(self, alias: GenericAlias) -> None:
         """
-        Called after the instance has been constructed with a specialised alias.
+        Called after construction with a specialised alias.
 
-        Builds the TypeVar -> concrete-type mapping from ``alias``, then walks
-        ``__runtime_generic_iter_children__`` to propagate resolved types into
-        any child ``RuntimeGeneric`` instances.
+        Builds the TypeVar -> type mapping, then propagates resolved types into
+        any child ``RuntimeGeneric`` instances via ``__runtime_generic_iter_children__``.
 
-        Performance note: child propagation is skipped for non-``RuntimeGeneric``
-        children — plain values (``int``, tensors, etc.) can never gain type
-        bindings, so this avoids O(N) traversal of large containers.
-
-        Override to add custom validation::
+        Override to add validation::
 
             def __runtime_generic_post_init__(self, alias):
-                args = get_runtime_args(alias)   # O(1) from cache after first call
-                validate_something(args, self.data)
-                super().__runtime_generic_post_init__(alias)  # propagate
+                args = get_runtime_args(alias)   # O(1) — cached
+                validate(args, self.data)
+                super().__runtime_generic_post_init__(alias)
 
-        Always call ``super()`` unless you deliberately want to suppress child
-        propagation.
+        Always call ``super()`` unless intentionally suppressing child propagation.
         """
-        self.__runtime_generic_pre_init__(alias)
         mapping = mapping_from_alias(alias, type(self))
-        self.__runtime_generic_propagate_to_children__(mapping)
+        self.__runtime_generic_propagate_children__(mapping)
 
-    def __runtime_generic_propagate_to_children__(
-        self, mapping: dict[Any, Any]
-    ) -> None:
+    def __runtime_generic_propagate_children__(self, mapping: dict[Any, Any]) -> None:
         """
-        Walk ``__runtime_generic_iter_children__`` and recursively fire
-        ``__runtime_generic_post_init__`` on any child ``RuntimeGeneric``
-        instances.
+        Propagate ``__runtime_generic_post_init__`` into child RuntimeGeneric
+        instances yielded by ``__runtime_generic_iter_children__``.
 
-        Separated from ``__runtime_generic_post_init__`` so that subclass
-        overrides can call ``super().__runtime_generic_propagate_to_children__(mapping)``
-        after doing their own validation — reusing the mapping that was already
-        built rather than recomputing it via a second ``mapping_from_alias`` call.
+        Call this directly (with a pre-built mapping) from subclass overrides
+        instead of ``super().__runtime_generic_post_init__(alias)`` to avoid
+        rebuilding the mapping a second time::
+
+            def __runtime_generic_post_init__(self, alias):
+                mapping = mapping_from_alias(alias, type(self))
+                # ... validate using mapping ...
+                self.__runtime_generic_propagate_children__(mapping)
         """
         for val, resolved in self.__runtime_generic_iter_children__(mapping):
             if isinstance(val, RuntimeGeneric):
@@ -569,22 +479,11 @@ class RuntimeGeneric(Generic[Unpack[Ts]]):
 
 class _RuntimeGenericAlias(GenericAlias):
     """
-    Deferred ``RuntimeGeneric`` constructor.
+    Deferred RuntimeGeneric constructor returned by ``__class_getitem__``.
 
-    Returned by ``RuntimeGeneric.__class_getitem__`` in place of a plain
-    ``GenericAlias``.  Behaves like a type-level curry: each ``[]`` application
-    binds more TypeVars, and ``()`` finally constructs the instance.
+    Each ``[]`` application binds more TypeVars; ``()`` constructs the instance.
 
-    Construction lifecycle
-    ----------------------
-    1. Set ``_runtime_typevar_ctx`` so nested ``__class_getitem__`` calls can
-       resolve in-flight TypeVars.
-    2. Set ``_runtime_alias_ctx`` so exotic constructors (e.g. numpy's
-       ``__array_finalize__``) can retrieve the alias without going through
-       the normal ``__call__`` path.
-    3. Call ``super().__call__`` to invoke ``__new__`` / ``__init__``.
-    4. Call ``__runtime_generic_post_init__`` on the resulting instance.
-    5. Reset both ContextVars via their tokens regardless of exceptions.
+    Lifecycle: set ContextVars → super().__call__ → post_init → reset ContextVars.
     """
 
     def __new__(cls, origin: type, args: Any, /) -> Self:
@@ -593,22 +492,16 @@ class _RuntimeGenericAlias(GenericAlias):
         # [TODO]: Validate TypeVars specialisation, against bounds/constraints too [?]
         params = getattr(origin, "__parameters__", ())
         args_tuple: tuple[Any, ...] = args if isinstance(args, tuple) else (args,)  # pyright: ignore[reportUnknownVariableType]
-
-        # TypeVarTuple is greedy and unbounded — its presence makes the
-        # upper-arity check meaningless, so skip it.
-        if not any(isinstance(p, TypeVarTuple) for p in params) and len(
-            args_tuple
-        ) > len(params):
+        has_tvt = any(isinstance(p, TypeVarTuple) for p in params)
+        if not has_tvt and len(args_tuple) > len(params):
             raise TypeError(
                 f"Too many arguments for {origin.__name__}: "
-                f"actual {len(args_tuple)}, expected {len(params)}"
+                f"got {len(args_tuple)}, expected {len(params)}"
             )
-
         return inst
 
     @classmethod
     def from_generic_alias(cls, alias: GenericAlias) -> Self:
-        """Wrap an existing ``GenericAlias`` in a ``_RuntimeGenericAlias``."""
         return cls(get_origin(alias), get_args(alias))
 
     def __getitem__(self, typeargs: Any) -> Self:
@@ -616,20 +509,6 @@ class _RuntimeGenericAlias(GenericAlias):
         return type(self).from_generic_alias(super().__getitem__(typeargs))
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        """
-        Construct a specialised ``RuntimeGeneric`` instance.
-
-        Sets both runtime ContextVars, delegates to ``super().__call__``, then
-        fires ``__runtime_generic_post_init__`` on the result.  Both ContextVars
-        are reset in a ``finally`` block so they cannot leak across coroutines or
-        nested constructions.
-
-        For subclasses with exotic construction paths (e.g. ``np.ndarray``
-        subclasses built via ``.view()``), ``__runtime_generic_post_init__``
-        will not be reached through this path.  Those subclasses should override
-        their exotic hook (e.g. ``__array_finalize__``) and call
-        ``self.__runtime_generic_pending_alias__()`` to retrieve the stashed alias.
-        """
         origin = get_origin(self)
         mapping = mapping_from_alias(self, origin)
 
@@ -645,47 +524,19 @@ class _RuntimeGenericAlias(GenericAlias):
         return obj  # pyright: ignore[reportUnknownVariableType]
 
 
-## ── Public API ───────────────────────────────────────────────────────────────
+# ── Public API ────────────────────────────────────────────────────────────────
 
 
 def propagate_runtime(obj: Any, resolved_type: Any) -> None:
-    """
-    Push a resolved generic alias into a RuntimeGeneric instance, triggering
-    ``__runtime_generic_post_init__`` so it can propagate type info to its own
-    children.  No-op for non-``RuntimeGeneric`` objects.
-    """
+    """Fire ``__runtime_generic_post_init__`` on a RuntimeGeneric instance. No-op otherwise."""
     if isinstance(obj, RuntimeGeneric):
         obj.__runtime_generic_post_init__(resolved_type)
 
 
-def mapping_from_alias(alias: Any, cls: Any) -> dict[Any, Any]:
-    """
-    Build a fully-augmented TypeVar -> type mapping from a specialised alias,
-    then fill in any remaining bindings from cls's inheritance chain.
-
-    The mapping is built fresh each call (not cached here) because it is
-    mutated in-place by ``_augment_with_inherited``.  The underlying MRO walk
-    inside ``_augment_with_inherited`` is itself cached, so the only uncached
-    work is ``_build_mapping`` (a simple zip) plus the ``tuple(mapping.items())``
-    key construction.
-    """
-    origin = get_origin(alias) or alias
-    parameters: tuple[Any, ...] = getattr(origin, "__parameters__", ())
-    mapping, _ = _build_mapping(parameters, get_args(alias))
-    _augment_with_inherited(cls, mapping)
-    return mapping
-
-
 def get_runtime_origin(tp: Any) -> Any:
     """
-    Like ``typing.get_origin``, but returns ``tp`` itself when there is no
-    origin (instead of ``None``), so callers never need a ``None``-guard.
-
-    Examples::
-
-        get_runtime_origin(list[int])   # list
-        get_runtime_origin(MyClass[T])  # MyClass
-        get_runtime_origin(MyClass)     # MyClass  (no origin -> tp itself)
+    Like ``typing.get_origin`` but returns ``tp`` itself (not None) when there
+    is no origin, so callers never need a None-guard.
     """
     return get_origin(tp) or tp
 
@@ -698,45 +549,36 @@ def get_runtime_args(
 def get_runtime_args(
     tp: TypeForm[Any] | GenericAlias | TypeAliasType, upto: type | None = None
 ) -> tuple[Any, ...]: ...
-#
 def get_runtime_args(
     tp: TypeForm[Any] | GenericAlias | TypeAliasType, upto: type | None = None
 ) -> tuple[Any, ...]:
     """
-    Return the resolved type arguments for a (potentially inherited) generic type.
+    Return resolved type arguments for a (potentially inherited) generic type.
 
-    Mirrors ``typing.get_args`` but walks the full inheritance graph so that
-    concrete bindings set in parent classes are visible::
+    Unlike ``typing.get_args``, walks the full inheritance graph so bindings
+    set in parent classes are visible::
 
         class Base(RuntimeGeneric[A, B]): ...
         class Child(Base[int, str]): ...
 
-        get_runtime_args(Child)            # (int, str)
-        get_runtime_args(Child, upto=Base) # (int, str)
+        get_runtime_args(Child)             # (int, str)
+        get_runtime_args(Child, upto=Base)  # (int, str)
 
-    Parameters
-    ----------
-    tp:
-        A specialised generic alias (``MyClass[int]``), a fully-bound subclass,
-        or any type expression accepted by ``typing.get_args``.
-    upto:
-        When given, BFS the inheritance graph and return the args as seen from
-        that specific ancestor.  Useful when a class inherits from multiple
-        generic bases.
+    The common case (upto=None, specialised alias) is served from an LRU cache —
+    N constructions from the same alias cost one MRO walk + N-1 cache hits.
     """
     origin = get_runtime_origin(tp)
 
     if not hasattr(origin, "__orig_bases__"):
-        return get_args(tp)  # builtin generics: list[int] etc — already fast
+        return get_args(tp)
 
-    # Fast path: upto=None — by far the dominant call pattern at construction time.
     if upto is None:
         try:
-            return _cached_get_runtime_args(tp)
+            args, _ = _cached_alias_info(tp)  # type: ignore[arg-type]
+            return args
         except TypeError:
-            pass  # unhashable tp (shouldn't occur for GenericAlias, but be defensive)
+            pass  # unhashable tp — fall through
 
-    # Slow path: upto= specified, or unhashable tp.
     parameters: tuple[Any, ...] = getattr(origin, "__parameters__", ())
     mapping, has_tvt_value = _build_mapping(parameters, get_args(tp))
     _augment_with_inherited(origin, mapping)
@@ -751,24 +593,12 @@ def get_runtime_mapping(
     tp: TypeForm[Any] | GenericAlias | TypeAliasType,
 ) -> dict[Any, Any]:
     """
-    Return the full TypeVar -> concrete-type mapping for a specialised generic.
+    Return the full TypeVar -> type mapping for a specialised generic.
 
-    Unbound TypeVars appear as their own values (i.e. ``{T: T}``), so callers
-    can always check whether a binding is concrete with
-    ``isinstance(v, TypeVar)``.
+    Unbound TypeVars appear as their own values (``{T: T}``).  The returned
+    dict is a fresh copy each call — safe to mutate.
 
-    Examples::
-
-        class Pair(RuntimeGeneric[A, B]): ...
-
-        get_runtime_mapping(Pair[int, str])   # {A: int, B: str}
-        get_runtime_mapping(Pair[int, B])     # {A: int, B: B}  <- B unbound
-        get_runtime_mapping(Pair)             # {}  (no params supplied)
-
-    Performance
-    -----------
-    Results are cached per alias.  The returned dict is a fresh copy each call
-    so callers may mutate it freely without affecting the cache.
+    Results are cached per alias; same semantics as ``get_runtime_args``.
     """
     origin = get_runtime_origin(tp)
 
@@ -776,9 +606,10 @@ def get_runtime_mapping(
         return {}
 
     try:
-        return dict(_cached_get_runtime_mapping(tp))
+        _, items = _cached_alias_info(tp)  # type: ignore[arg-type]
+        return dict(items)
     except TypeError:
-        pass  # unhashable tp — fall through
+        pass
 
     parameters: tuple[Any, ...] = getattr(origin, "__parameters__", ())
     mapping, _ = _build_mapping(parameters, get_args(tp))
@@ -790,24 +621,21 @@ def is_runtime_specialised(
     tp: TypeForm[Any] | GenericAlias | TypeAliasType,
 ) -> bool:
     """
-    Return ``True`` when every TypeVar in ``tp``'s mapping is concretely bound
-    (i.e. no value in the mapping is itself a TypeVar or TypeVarTuple).
+    Return True when every TypeVar in ``tp``'s mapping is concretely bound.
 
-    Useful as a pre-condition check in runtime validators::
+    Useful as a precondition check::
 
-        assert is_runtime_specialised(MyList[int]), "Need a concrete element type"
+        assert is_runtime_specialised(MyList[int])
     """
     origin = get_runtime_origin(tp)
     if not hasattr(origin, "__orig_bases__"):
-        return True  # no parameters — trivially specialised
+        return True
 
     try:
-        items = _cached_get_runtime_mapping(tp)
+        _, items = _cached_alias_info(tp)  # type: ignore[arg-type]
     except TypeError:
         items = tuple(get_runtime_mapping(tp).items())
 
-    if not items:
-        return True
     return not any(type(v) in _TV_TYPES for _, v in items)
 
 
@@ -818,26 +646,27 @@ def resolve_runtime_annotation(
     """
     Substitute TypeVars in ``annotation`` using the bindings of ``tp``.
 
-    ``tp`` may be:
-    - A specialised alias: ``MyClass[int]``
-    - A fully-bound subclass: ``class Child(Base[int]): ...``
-    - A ``RuntimeGeneric`` instance — bindings are taken from its class
-
-    Examples::
+    ``tp`` may be a specialised alias, a fully-bound subclass, or a
+    RuntimeGeneric instance (bindings taken from its class)::
 
         class Box(RuntimeGeneric[T]): ...
 
-        resolve_runtime_annotation(list[T], Box[int])    # list[int]
-        resolve_runtime_annotation(T,       Box[int])    # int
-
-        box = Box[int]()
-        resolve_runtime_annotation(list[T], box)         # list[int]
+        resolve_runtime_annotation(list[T], Box[int])  # list[int]
+        resolve_runtime_annotation(T, Box[int]())      # int
     """
     if isinstance(tp, RuntimeGeneric):
         tp = type(tp)  # type: ignore[assignment]
-
-    mapping = get_runtime_mapping(tp)  # pyright: ignore[reportUnknownArgumentType]
-    return _substitute(annotation, mapping)
+    return _substitute(annotation, get_runtime_mapping(tp))  # pyright: ignore[reportUnknownArgumentType]
 
 
-## ─────────────────────────────────────────────────────────────────────────────
+def clear_runtime_caches() -> None:
+    """
+    Invalidate all alias-keyed LRU caches.
+
+    Not needed in normal usage — cache entries are permanently valid since
+    MRO and base class annotations are fixed at class definition time.
+    Useful for test isolation when parametrized tests construct many distinct
+    specialisations and you want to reclaim memory between runs.
+    """
+    _cached_alias_info.cache_clear()
+    _collect_inherited_bindings.cache_clear()

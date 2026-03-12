@@ -1,6 +1,7 @@
 """
 TypedDict
 =======
+A dict subclass with runtime length enforcement.
 """
 # src/typingkit/core/dict.py
 
@@ -16,32 +17,24 @@ __all__ = [
     "LengthError",
 ]
 
-# ── Type parameters ───────────────────────────────────────────────────────────
-
 Length = TypeVar("Length", bound=int, default=int)
 Key = TypeVar("Key", default=Any)
 Value = TypeVar("Value", default=Any)
 
 
-# ── TypedDict ─────────────────────────────────────────────────────────────────
-
-
 class TypedDict(RuntimeGeneric[Length, Key, Value], dict[Key, Value]):
     """
-    A ``dict`` subclass whose length is enforced at runtime via the
-    ``RuntimeGeneric`` machinery.
+    A ``dict`` subclass with optional runtime length enforcement.
 
     Usage::
 
-        TypedDict[Literal[2], str, int]({"a": 1, "b": 2})   # length checked
-        TypedDict[int, str, int]({"a": 1})                  # no length constraint
+        TypedDict[Literal[2], str, int]({"a": 1, "b": 2})  # length checked
+        TypedDict[int, str, int]({"a": 1})                 # unconstrained length
     """
-
-    # ── RuntimeGeneric hooks ──────────────────────────────────────────────────
 
     def __runtime_generic_post_init__(self, alias: GenericAlias) -> None:
         if getattr(self, "_runtime_validated", False):
-            return  # already validated when this dict was first constructed
+            return
         self._runtime_validated = True
 
         args = get_runtime_args(alias)
@@ -50,10 +43,9 @@ class TypedDict(RuntimeGeneric[Length, Key, Value], dict[Key, Value]):
         if TypedCollectionConfig.VALIDATE_LENGTH:
             validate_length(self, length)
 
-        mapping = mapping_from_alias(alias, type(self))
-        self.__runtime_generic_propagate_to_children__(mapping)
-
-    # ── dict API ──────────────────────────────────────────────────────────────
+        self.__runtime_generic_propagate_children__(
+            mapping_from_alias(alias, type(self))
+        )
 
     def __len__(self) -> Length:
         return cast(Length, super().__len__())

@@ -1,6 +1,7 @@
 """
 TypedList
 =======
+A list subclass with runtime element-type and length enforcement.
 """
 # src/typingkit/core/list.py
 
@@ -20,23 +21,14 @@ __all__ = [
     "LengthError",
 ]
 
-
-# ── Type parameters ───────────────────────────────────────────────────────────
-
 Length = TypeVar("Length", bound=int, default=int)
 Item = TypeVar("Item", default=Any)
 
 
-# ── Exceptions ────────────────────────────────────────────────────────────────
-
-
 class ItemError(Exception):
-    """Raised when a list item's type doesn't match the expected item type."""
+    """Raised when a list item's type doesn't match the expected element type."""
 
 
-# ── Item assignability ────────────────────────────────────────────────────────
-
-# Fast-path lookup for numeric tower
 _NUMERIC_TOWER: dict[type, type] = {
     complex: numbers.Complex,
     float: numbers.Real,
@@ -45,7 +37,6 @@ _NUMERIC_TOWER: dict[type, type] = {
 
 
 def _is_assignable(value: Any, expected_type: type) -> bool:
-    """Return True when *value* is an instance of *expected_type*, respecting Any and the numeric tower."""
     if expected_type is Any:
         return True
     abstract = _NUMERIC_TOWER.get(expected_type)
@@ -60,47 +51,40 @@ def _is_assignable(value: Any, expected_type: type) -> bool:
 
 def _validate_items(items: Iterable[Any], item_type: Any) -> None:
     if not TypedCollectionConfig.VALIDATE_ITEM or item_type is Any:
-        return None
+        return
     for index, item in enumerate(items):
         if not _is_assignable(item, item_type):
             raise ItemError(
-                f"Item type mismatch at index {index}: "
-                f"expected {item_type.__name__!r}, got {type(item).__name__!r}"
+                f"Item at index {index}: expected {item_type.__name__!r},"
+                f" got {type(item).__name__!r}"
             )
-    return None
-
-
-# ── TypedList ─────────────────────────────────────────────────────────────────
 
 
 class TypedList(RuntimeGeneric[Length, Item], list[Item]):
     """
-    A ``list`` subclass whose element type and optional length are enforced at
-    runtime via the ``RuntimeGeneric`` machinery.
+    A ``list`` subclass with runtime element-type and optional length enforcement.
 
     Usage::
 
-        TypedList[Literal[3]]([1, 2, 3])           # element type checked
-        TypedList[Literal[3], int]([1, 2, 3])      # length + element type checked
+        TypedList[Literal[3], int]([1, 2, 3])   # length + element type checked
+        TypedList[int]([1, 2, 3])               # element type only
     """
-
-    # ── RuntimeGeneric hooks ──────────────────────────────────────────────────
 
     def __runtime_generic_iter_children__(
         self, mapping: dict[Any, Any]
     ) -> Iterable[tuple[Any, Any]]:
-        """Yield each element paired with the resolved Item type."""
         item_type = mapping.get(Item, Any)  # type: ignore[misc]
         for elem in self:
             yield elem, item_type
 
     def __runtime_generic_post_init__(self, alias: GenericAlias) -> None:
+        # Skip re-validation for instances already validated at construction.
+        # Set first to guard against re-entrant calls during child propagation.
         if getattr(self, "_runtime_validated", False):
-            return  # already validated when this list was first constructed
+            return
         self._runtime_validated = True
 
         args = get_runtime_args(alias)
-        # Positional: [Length, Item] — both optional at runtime
         length: Any = args[0] if len(args) > 0 else Length.__default__  # type: ignore[misc]
         item_type: Any = args[1] if len(args) > 1 else Item.__default__  # type: ignore[misc]
 
@@ -108,10 +92,9 @@ class TypedList(RuntimeGeneric[Length, Item], list[Item]):
             validate_length(self, length)
         _validate_items(self, item_type)
 
-        mapping = mapping_from_alias(alias, type(self))
-        self.__runtime_generic_propagate_to_children__(mapping)
-
-    # ── list API ──────────────────────────────────────────────────────────────
+        self.__runtime_generic_propagate_children__(
+            mapping_from_alias(alias, type(self))
+        )
 
     def __len__(self) -> Length:
         return cast(Length, super().__len__())
@@ -125,7 +108,7 @@ class TypedList(RuntimeGeneric[Length, Item], list[Item]):
 
     @classmethod
     def full(cls, length: Length, fill_value: Item | Callable[[int], Item]) -> Self:
-        """Create a TypedList of `length` elements, filled via `fill_value` or a factory."""
+        """Create a TypedList of ``length`` elements filled by value or factory."""
         if callable(fill_value):
             data: list[Item] = [cast(Item, fill_value(i)) for i in range(length)]
         else:
