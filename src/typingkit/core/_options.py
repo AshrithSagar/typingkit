@@ -123,9 +123,17 @@ class RuntimeOptions:
         type are considered from the scoped override, so domain-specific
         fields on a subclass are not accidentally clobbered.
         """
+        # Global default acts as a master override — if it disables validation,
+        # nothing can re-enable it except explicitly passing scoped().
+        effective = class_options
+        if not global_default_runtime_options.validate:
+            effective = replace(effective, validate=False)
+        if not global_default_runtime_options.propagate:
+            effective = replace(effective, propagate=False)
+
         scoped = _scoped_options.get()
         if scoped is None:
-            return class_options
+            return effective
 
         # Apply only the base RuntimeOptions fields from the scoped override;
         # domain-specific fields on class_options are preserved.
@@ -133,15 +141,12 @@ class RuntimeOptions:
         overrides: dict[str, Any] = {}
         for field in base_fields:
             scoped_val = getattr(scoped, field, None)
-            class_val = getattr(class_options, field, None)
-            if scoped_val is not None and scoped_val != class_val:
-                # Only override if the scoped value actually differs — this
-                # lets a narrower scoped() call not accidentally reset flags
-                # set by an outer scope.
+            effective_val = getattr(effective, field, None)
+            if scoped_val is not None and scoped_val != effective_val:
                 overrides[field] = scoped_val
         if not overrides:
-            return class_options
-        return replace(class_options, **overrides)
+            return effective
+        return replace(effective, **overrides)
 
 
 # ── Context manager implementation ────────────────────────────────────────────
