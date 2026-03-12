@@ -182,10 +182,7 @@ class TestEdgeCases:
 
 class TestInvalidUsage:
     def test_excess_args(self):
-        class Base(RuntimeGeneric[A, B]):
-            def __runtime_generic_post_init__(self, alias: GenericAlias) -> None:
-                _ = get_runtime_args(alias)  # Enforce check
-                return None
+        class Base(RuntimeGeneric[A, B]): ...
 
         with pytest.raises(TypeError):
             Base[int, str, float]()  # Too many type args

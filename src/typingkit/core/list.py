@@ -8,21 +8,32 @@ A list subclass with runtime element-type and length enforcement.
 import copy
 import numbers
 from collections.abc import Iterable
+from dataclasses import dataclass
 from types import GenericAlias
 from typing import Any, Callable, Self, TypeVar, cast, get_origin
 
-from typingkit.core._config import TypedCollectionConfig
+from typingkit.core._options import RuntimeOptions
 from typingkit.core._validators import LengthError, validate_length
 from typingkit.core.generics import RuntimeGeneric, get_runtime_args, mapping_from_alias
 
 __all__ = [
     "TypedList",
+    "TypedListOptions",
     "ItemError",
     "LengthError",
 ]
 
 Length = TypeVar("Length", bound=int, default=int)
 Item = TypeVar("Item", default=Any)
+
+
+@dataclass(frozen=True)
+class TypedListOptions(RuntimeOptions):
+    validate_length: bool = True
+    validate_item_type: bool = True
+
+
+_DEFAULT_LIST_OPTIONS = TypedListOptions()
 
 
 class ItemError(Exception):
@@ -50,8 +61,6 @@ def _is_assignable(value: Any, expected_type: type) -> bool:
 
 
 def _validate_items(items: Iterable[Any], item_type: Any) -> None:
-    if not TypedCollectionConfig.VALIDATE_ITEM or item_type is Any:
-        return
     for index, item in enumerate(items):
         if not _is_assignable(item, item_type):
             raise ItemError(
@@ -60,7 +69,11 @@ def _validate_items(items: Iterable[Any], item_type: Any) -> None:
             )
 
 
-class TypedList(RuntimeGeneric[Length, Item], list[Item]):
+class TypedList(
+    RuntimeGeneric[Length, Item],
+    list[Item],
+    options=_DEFAULT_LIST_OPTIONS,
+):
     """
     A ``list`` subclass with runtime element-type and optional length enforcement.
 
@@ -77,21 +90,22 @@ class TypedList(RuntimeGeneric[Length, Item], list[Item]):
         for elem in self:
             yield elem, item_type
 
-    def __runtime_generic_post_init__(self, alias: GenericAlias) -> None:
-        # Skip re-validation for instances already validated at construction.
-        # Set first to guard against re-entrant calls during child propagation.
-        if getattr(self, "_runtime_validated", False):
-            return
-        self._runtime_validated = True
+    def __runtime_generic_validate__(self, alias: GenericAlias) -> None:
+        # get_runtime_args always returns a full-length tuple (defaults filled).
+        # Safe to unpack directly against the class's parameter list.
+        length, item_type = get_runtime_args(alias)
 
-        args = get_runtime_args(alias)
-        length: Any = args[0] if len(args) > 0 else Length.__default__  # type: ignore[misc]
-        item_type: Any = args[1] if len(args) > 1 else Item.__default__  # type: ignore[misc]
-
-        if TypedCollectionConfig.VALIDATE_LENGTH:
+        opts = self.__class__._runtime_options_
+        # Narrow to TypedListOptions for the domain-specific flag.
+        # Falls back gracefully if a subclass switched to a plain RuntimeOptions.
+        if isinstance(opts, TypedListOptions) and opts.validate_length:
             validate_length(self, length)
-        _validate_items(self, item_type)
+        if isinstance(opts, TypedListOptions) and opts.validate_item_type:
+            _validate_items(self, item_type)
 
+        # Propagate resolved types into child RuntimeGeneric instances.
+        # We call this here (rather than relying on the base post_init) because
+        # we've already resolved the mapping above — avoids a second build.
         self.__runtime_generic_propagate_children__(
             mapping_from_alias(alias, type(self))
         )

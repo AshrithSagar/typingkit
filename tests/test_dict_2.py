@@ -10,7 +10,6 @@ from typing import Any, Literal, TypeVar
 
 import pytest
 
-from typingkit.core import TypedCollectionConfig
 from typingkit.core.dict import LengthError, TypedDict
 
 
@@ -51,19 +50,6 @@ class TestLengthProperty:
         d = Dict3({"a": 1, "b": 2, "c": 3})
 
         assert d.length == 3
-
-
-class TestConfigToggles:
-    def test_disable_length_validation(self) -> None:
-        TypedCollectionConfig.disable_all()
-
-        Dict2 = TypedDict[Literal[2]]
-
-        d = Dict2({"a": 1})
-
-        assert len(d) == 1
-
-        TypedCollectionConfig.enable_all()
 
 
 class TestErrorMessages:

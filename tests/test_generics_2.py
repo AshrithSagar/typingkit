@@ -138,6 +138,7 @@ class TestPropagateRuntime:
 
         obj = Tracker[int]()
         propagated.clear()
+        obj._runtime_validated = False  # reset guard so propagate_runtime fires
         propagate_runtime(obj, Tracker[str])
         assert propagated == [(str,)]
 
@@ -168,7 +169,7 @@ class TestDataclassIntegration:
         post_inits: list[Any] = []
 
         class Inner(RuntimeGeneric[T]):
-            def __runtime_generic_post_init__(self, alias: GenericAlias) -> None:
+            def __runtime_generic_validate__(self, alias: GenericAlias) -> None:
                 post_inits.append(alias)
 
         @dataclass
@@ -177,6 +178,7 @@ class TestDataclassIntegration:
 
         inner_obj = Inner[int]()
         post_inits.clear()
+        inner_obj._runtime_validated = False  # allow re-propagation from Outer
         Outer[int](inner=inner_obj)
         # Outer's post_init should propagate to inner
         assert any(get_args(a) == (int,) for a in post_inits)

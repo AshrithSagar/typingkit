@@ -17,22 +17,23 @@ after 'every' ``.view()`` — including the one triggered during a specialised
 ``TypedNDArray[...]()`` call::
 
     _RuntimeGenericAlias.__call__
-        sets _runtime_alias_ctx = TypedNDArray[tuple[3], np.dtype[np.int32]]
-        -> TypedNDArray.__new__
-            -> np.array(...)
-            -> arr.view(TypedNDArray)
-                -> TypedNDArray.__array_finalize__   ← bridge fires here
-                    alias = __runtime_generic_pending_alias__()  # consumes ctx
-                    __runtime_generic_post_init__(alias)         # validates
-        resets _runtime_alias_ctx (already None — consumed above)
+        resolves effective RuntimeOptions
+        if not opts.validate → super().__call__ only, no ContextVars set
+        else:
+            sets _runtime_alias_ctx = TypedNDArray[tuple[3], np.dtype[np.int32]]
+            -> TypedNDArray.__new__
+                -> np.array(...)
+                -> arr.view(TypedNDArray)
+                    -> TypedNDArray.__array_finalize__   ← bridge fires here
+                        alias = __runtime_generic_pending_alias__()
+                        __runtime_generic_post_init__(alias)
+                            _runtime_validated guard
+                            __runtime_generic_validate__(alias)  ← shape/dtype
+            resets _runtime_alias_ctx (already None — consumed above)
 
 ``__runtime_generic_pending_alias__`` resets the ContextVar on first read, so
 subsequent ``__array_finalize__`` calls from slicing / further views see
 ``None`` and skip validation gracefully.
-
-``_TypedNDArrayGenericAlias`` has been removed; ``_RuntimeGenericAlias``
-(returned by ``RuntimeGeneric.__class_getitem__``) provides equivalent
-deferred-binding behaviour for all ``RuntimeGeneric`` subclasses.
 """
 # src/typingkit/numpy/_typed/ndarray.py
 
@@ -40,6 +41,7 @@ deferred-binding behaviour for all ``RuntimeGeneric`` subclasses.
 
 import builtins
 from collections.abc import Iterable
+from dataclasses import dataclass
 from types import GenericAlias, UnionType
 from typing import (
     Any,
@@ -62,6 +64,7 @@ import numpy as np
 import numpy._typing as npt_
 import numpy.typing as npt
 
+from typingkit.core._options import RuntimeOptions
 from typingkit.core.generics import RuntimeGeneric, get_runtime_args
 
 ## ── Typings ──────────────────────────────────────────────────────────────────
@@ -106,6 +109,43 @@ class DimensionError(ShapeError):
 class DTypeError(Exception):
     """Raised when array dtype doesn't match expected dtype."""
 
+
+## ── Options ──────────────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class NDArrayOptions(RuntimeOptions):
+    """
+    Per-class options for ``TypedNDArray``.
+
+    Inherits ``validate`` (master switch) and ``propagate`` from
+    ``RuntimeOptions``, and adds::
+
+        validate_shape : bool
+            Check ``self.shape`` against the ``_ShapeT_co`` type argument.
+            Default: ``True``.
+
+        validate_dtype : bool
+            Check ``self.dtype`` against the ``_DTypeT_co`` type argument.
+            Default: ``True``.
+
+    Examples::
+
+        # Disable shape checking for a subclass
+        class LooseArray(TypedNDArray[tuple[Any], np.dtype[np.float64]],
+                         options=NDArrayOptions(validate_shape=False)):
+            ...
+
+        # Disable all validation for a hot-path scope
+        with RuntimeOptions.scoped(validate=False):
+            arr = TypedNDArray[tuple[Literal[3]]]([1, 2, 3])
+    """
+
+    validate_shape: bool = True
+    validate_dtype: bool = True
+
+
+_DEFAULT_NDARRAY_OPTIONS = NDArrayOptions()
 
 ## ── Runtime validation ───────────────────────────────────────────────────────
 
@@ -272,6 +312,7 @@ def _validate_shape_against_contexts(shape_spec: _AnyShape, actual: _Shape) -> N
 class TypedNDArray(
     RuntimeGeneric[_ShapeT_co, _DTypeT_co],
     np.ndarray[_ShapeT_co, _DTypeT_co],
+    options=_DEFAULT_NDARRAY_OPTIONS,
 ):
     """
     Generic ``numpy.ndarray`` subclass with static shape typing and runtime
@@ -287,31 +328,17 @@ class TypedNDArray(
         arr = Array3x4([[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]])
         # ShapeError raised if shape doesn't match
 
-    TypeVars in the shape are supported for deferred binding::
+    Disabling validation for a subclass::
 
-        N = TypeVar("N")
-        ArrayN  = TypedNDArray[tuple[N]]
-        Array5  = ArrayN[Literal[5]]   # bind N=5
-        arr     = Array5([1, 2, 3, 4, 5])
+        class UncheckedArray(TypedNDArray[tuple[Any], np.dtype[np.float64]],
+                             options=NDArrayOptions(validate_shape=False,
+                                                    validate_dtype=False)):
+            ...
 
-    Exotic construction bridge
-    --------------------------
-    ``np.ndarray`` subclasses are constructed via ``np.array(...).view(cls)``,
-    which bypasses the normal ``__new__`` / ``__init__`` chain.  The
-    ``RuntimeGeneric`` machinery therefore cannot fire
-    ``__runtime_generic_post_init__`` through ``_RuntimeGenericAlias.__call__``
-    directly.
+    Temporarily disabling validation::
 
-    The bridge is ``__array_finalize__``: numpy guarantees to call it after
-    every ``.view()``, including the one triggered during a specialised
-    ``TypedNDArray[...]()`` call.  ``__array_finalize__`` calls
-    ``__runtime_generic_pending_alias__()`` to consume the stashed alias from
-    ``_runtime_alias_ctx``, then fires ``__runtime_generic_post_init__``
-    manually.
-
-    Because ``__runtime_generic_pending_alias__`` resets the ContextVar on
-    first read, subsequent ``__array_finalize__`` calls from slicing or
-    further views see ``None`` and skip validation silently.
+        with RuntimeOptions.scoped(validate=False):
+            arr = IntArray3([1, 2, 3])
     """
 
     # ── RuntimeGeneric hooks ──────────────────────────────────────────────────
@@ -337,42 +364,33 @@ class TypedNDArray(
         for elem in self:
             yield elem, item_type
 
-    def __runtime_generic_post_init__(self, alias: GenericAlias) -> None:
+    def __runtime_generic_validate__(self, alias: GenericAlias) -> None:
         """
         Validate shape and dtype against the specialised alias.
 
-        Extracts ``_ShapeT_co`` and ``_DTypeT_co`` from ``alias``, resolves
-        any dimension expressions, then delegates to the shape/dtype
-        validators.  Calls ``super().__runtime_generic_post_init__`` at the
-        end to propagate into any child ``RuntimeGeneric`` instances (no-op
-        for plain scalar arrays, but correct for object arrays).
-
-        Parameters
-        ----------
-        alias:
-            The fully-specialised alias, e.g.
-            ``TypedNDArray[tuple[Literal[3]], np.dtype[np.int32]]``.
+        Called by the base ``__runtime_generic_post_init__`` after the
+        ``_runtime_validated`` guard and options checks pass.  Respects
+        per-class ``NDArrayOptions.validate_shape`` and
+        ``NDArrayOptions.validate_dtype`` flags independently.
         """
-        if getattr(self, "_runtime_validated", False):
-            return  # Already validated at construction time, skip re-validation
-        self._runtime_validated = True
+        # get_runtime_args fills defaults — safe to unpack directly.
+        shape_spec, dtype_spec = get_runtime_args(alias)
 
-        args = get_runtime_args(alias)
+        opts = self.__class__._runtime_options_
+        # Narrow to NDArrayOptions for domain-specific flags.
+        if isinstance(opts, NDArrayOptions):
+            check_shape = opts.validate_shape
+            check_dtype = opts.validate_dtype
+        else:
+            check_shape = check_dtype = True
 
-        # Both type params have defaults, so args may be shorter than 2.
-        shape_spec: Any = args[0] if len(args) > 0 else _ShapeT_co.__default__  # type: ignore[misc]
-        dtype_spec: Any = args[1] if len(args) > 1 else _DTypeT_co.__default__  # type: ignore[misc]
+        if check_shape:
+            shape_args = _resolve_shape(get_args(shape_spec))
+            _validate_shape(shape_args, self.shape)
+            _validate_shape_against_contexts(shape_args, self.shape)
 
-        # Resolve dimension expressions (e.g. symbolic constants) before
-        # passing the shape to the validators.
-        shape_args = _resolve_shape(get_args(shape_spec))
-
-        _validate_shape(shape_args, self.shape)
-        _validate_shape_against_contexts(shape_args, self.shape)
-        _validate_dtype(dtype_spec, self.dtype)
-
-        # Propagate to children (future-proof for object arrays).
-        super().__runtime_generic_post_init__(alias)
+        if check_dtype:
+            _validate_dtype(dtype_spec, self.dtype)
 
     # ── numpy construction bridge ─────────────────────────────────────────────
 
@@ -475,15 +493,10 @@ class TypedNDArray(
         """
         numpy post-construction hook — bridge to ``RuntimeGeneric`` validation.
 
-        Called by numpy after every ``.view()`` operation, including the one
-        inside ``TypedNDArray.__new__``.  When a specialised alias is active
-        (i.e. the array is being constructed through ``TypedNDArray[...]()``),
-        ``__runtime_generic_pending_alias__`` returns and 'consumes' that alias,
-        and ``__runtime_generic_post_init__`` fires to validate shape and dtype.
-
-        For all subsequent ``__array_finalize__`` calls (slices, views,
-        ufunc outputs, etc.) ``__runtime_generic_pending_alias__`` returns
-        ``None`` and this method is a no-op, so no spurious validation occurs.
+        Called after every ``.view()``.  Consumes the pending alias from
+        ``_runtime_alias_ctx`` on the first call (during construction) and
+        fires ``__runtime_generic_post_init__``.  Subsequent calls from
+        slicing/views see ``None`` and are no-ops.
         """
         if obj is None:
             # Called during ndarray.__new__ for brand-new allocations;

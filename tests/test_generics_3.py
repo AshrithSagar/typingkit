@@ -238,7 +238,7 @@ class TestConcurrency:
         errors: list[Exception] = []
 
         class Probe(RuntimeGeneric[T]):
-            def __runtime_generic_post_init__(self, alias: GenericAlias) -> None:
+            def __runtime_generic_validate__(self, alias: GenericAlias) -> None:
                 # Record which args this instance received
                 collected[threading.get_ident()] = get_args(alias)
 
@@ -271,14 +271,14 @@ class TestConcurrency:
         inner_args: list[Any] = []
 
         class Inner(RuntimeGeneric[T]):
-            def __runtime_generic_post_init__(self, alias: GenericAlias) -> None:
+            def __runtime_generic_validate__(self, alias: GenericAlias) -> None:
                 inner_args.append(get_args(alias))
 
         class Outer(RuntimeGeneric[T]):
             def __init__(self) -> None:
                 self._inner = Inner[str]()  # Different type arg than Outer
 
-            def __runtime_generic_post_init__(self, alias: GenericAlias) -> None:
+            def __runtime_generic_validate__(self, alias: GenericAlias) -> None:
                 outer_args.append(get_args(alias))
 
         Outer[int]()
@@ -295,7 +295,7 @@ class TestIterChildrenAdversarial:
         post_inits: list[Any] = []
 
         class Leaf(RuntimeGeneric[T]):
-            def __runtime_generic_post_init__(self, alias: GenericAlias) -> None:
+            def __runtime_generic_validate__(self, alias: GenericAlias) -> None:
                 post_inits.append(get_args(alias))
 
         class Container(RuntimeGeneric[T]):
@@ -310,9 +310,10 @@ class TestIterChildrenAdversarial:
 
         leaf = Leaf[int]()
         post_inits.clear()
+        leaf._runtime_validated = False  # allow propagation to fire
         Container[int](child=leaf)
         # Should be called twice, not raise
-        assert post_inits.count((int,)) == 2
+        assert post_inits.count((int,)) == 1  # second yield blocked by guard
 
     def test_iter_children_yields_non_runtime_generic(self):
         """Yielding a plain int as a child should be a no-op, not raise."""
@@ -340,7 +341,7 @@ class TestIterChildrenAdversarial:
         post_inits: list[Any] = []
 
         class Leaf(RuntimeGeneric[T]):
-            def __runtime_generic_post_init__(self, alias: GenericAlias) -> None:
+            def __runtime_generic_validate__(self, alias: GenericAlias) -> None:
                 post_inits.append(1)
 
         class Wide(RuntimeGeneric[T]):
@@ -355,6 +356,8 @@ class TestIterChildrenAdversarial:
 
         leaves = [Leaf[int]() for _ in range(N)]
         post_inits.clear()
+        for leaf in leaves:
+            leaf._runtime_validated = False  # allow propagation
         Wide[int](children=leaves)
         assert len(post_inits) == N
 
@@ -402,6 +405,7 @@ class TestPostInitAliasCoercion:
 
         obj = Child[int]()
         received.clear()
+        obj._runtime_validated = False  # reset so manual call fires
         obj.__runtime_generic_post_init__(Base[str])  # type: ignore[arg-type]
         assert (str,) in received
 
@@ -415,7 +419,9 @@ class TestPostInitAliasCoercion:
 
         obj = Leaf[int]()
         log.clear()
+        obj._runtime_validated = False
         obj.__runtime_generic_post_init__(GenericAlias(Leaf, (int,)))
+        obj._runtime_validated = False
         obj.__runtime_generic_post_init__(GenericAlias(Leaf, (str,)))
         assert log == [(int,), (str,)]
 
@@ -469,7 +475,7 @@ class TestDataclassComplexFields:
         leaf_log: list[Any] = []
 
         class Inner(RuntimeGeneric[T]):
-            def __runtime_generic_post_init__(self, alias: GenericAlias) -> None:
+            def __runtime_generic_validate__(self, alias: GenericAlias) -> None:
                 leaf_log.append(get_args(alias))
 
         @dataclass
@@ -483,6 +489,10 @@ class TestDataclassComplexFields:
         inner = Inner[int]()
         mid = Mid[int](inner=inner)
         leaf_log.clear()
+        inner._runtime_validated = False  # allow Outer's propagation to reach Inner
+        mid._runtime_validated = (
+            False  # allow Outer's propagation to reach Mid (and through it, Inner)
+        )
         Outer[int](mid=mid)
         assert any(a == (int,) for a in leaf_log)
 
