@@ -74,12 +74,17 @@ class Pow(BinaryOp[Arg1, Arg2]):
 
 ## Additional operations
 
-# Through TypeAliases
-Sub: TypeAlias = Add[Arg1, Neg[Arg2]]
-PlusOne: TypeAlias = Add[Arg1, Literal[1]]
+# TypeAliases and PEP-695 style TypeAliasTypes,
+# don't currently work with the mypy_plugin
 
-# Through PEP-695 style TypeAliasTypes
-type MinusOne[Arg1: int] = Sub[Arg1, Literal[1]]
+
+class Sub(Add[Arg1, Neg[Arg2]]): ...
+
+
+class PlusOne(Add[Arg1, Literal[1]]): ...
+
+
+class MinusOne(Sub[Arg1, Literal[1]]): ...
 
 
 # Through Subclassing
@@ -104,8 +109,10 @@ class Log(BinaryOp[Arg1, Arg2]):
         raise TypeError("Invalid dimension. Not an integer.")
 
 
-Log2 = Log[Arg1, Literal[2]]
-Log10 = Log[Arg1, Literal[10]]
+class Log2(Log[Arg1, Literal[2]]): ...
+
+
+class Log10(Log[Arg1, Literal[10]]): ...
 
 
 ## Evaluation

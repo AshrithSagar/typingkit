@@ -25,6 +25,10 @@ typecheck = [
 
 [tool.mypy]
 enable_incomplete_feature = ["TypeForm"]
+plugins = ["typingkit.mypy_plugin"]
+
+[tool.pytest.ini_options]
+norecursedirs = ["tests/mypy_plugin"]
 
 [tool.uv]
 default-groups = "all"
