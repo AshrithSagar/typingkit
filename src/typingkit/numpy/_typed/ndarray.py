@@ -199,6 +199,7 @@ def _validate_dtype(
                     raise DTypeError(f"expected {exp.__name__}, got {actual}")
         else:
             # [TODO]: Handle typing.Annotated
+            # [TODO]: Handle np.floating. Prolly special cased?
             raise TypeError(f"Invalid dtype specification. {expected} is not a dtype")
 
     # <class np.dtype>
@@ -394,9 +395,9 @@ class TypedNDArray(
 
     # ── numpy construction bridge ─────────────────────────────────────────────
 
-    # [FIXME]: Can we skip this method? It just uses
-    #   `np.asarray(object, dtype=dtype).view(cls)`
-    #   all of which are regular `numpy`.
+    # [NOTE]: Some overloads are typed as if TypedNDArray is typed as @final, although it is not to allow subclassing usage.
+    # Without HKTs, this is really difficult to type in the general case.
+    # It is recommended to override `__new__` when subclassing, to whatever typed precision one wants.
     @overload
     def __new__(  # type: ignore[misc]
         cls,
@@ -459,6 +460,9 @@ class TypedNDArray(
         like: npt_._SupportsArrayFunc | None = None,
     ) -> "TypedNDArray[_ShapeT_co, np.dtype[Any]]": ...
     #
+    # [FIXME]: Can we skip this method? It just uses
+    #   `np.asarray(object, dtype=dtype).view(cls)`
+    #   all of which are regular `numpy`.
     def __new__(  # type: ignore[misc]
         cls,
         object: npt.ArrayLike,
