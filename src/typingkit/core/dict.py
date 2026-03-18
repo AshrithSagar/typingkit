@@ -6,10 +6,10 @@ A dict subclass with runtime length enforcement.
 # src/typingkit/core/dict.py
 
 import copy
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from types import GenericAlias
-from typing import Any, Callable, Self, TypeVar, cast
+from typing import Any, Self, TypeVar, cast, overload
 
 from typingkit.core._options import RuntimeOptions
 from typingkit.core._validators import LengthError, validate_length
@@ -24,6 +24,8 @@ __all__ = [
 Length = TypeVar("Length", bound=int, default=int)
 Key = TypeVar("Key", default=Any)
 Value = TypeVar("Value", default=Any)
+
+IMMUTABLES = (int, float, str, bool, tuple, frozenset, bytes, type(None))
 
 
 @dataclass(frozen=True)
@@ -73,34 +75,77 @@ class TypedDict(
     def length(self) -> Length:
         return self.__len__()
 
+    @overload
     @classmethod
     def full(
         cls,
+        keys: Iterable[Key],
+        fill_value: Value | Callable[[Key], Value],
+        *,
+        length: None = ...,
+    ) -> Self: ...
+    @overload
+    @classmethod
+    def full(
+        cls,
+        keys: Iterable[Key],
+        fill_value: Value | Callable[[Key], Value],
+        *,
         length: Length,
+    ) -> Self: ...
+    @overload
+    @classmethod
+    def full(
+        cls,
+        keys: Callable[[int], Key],
+        fill_value: Value | Callable[[Key], Value],
+        *,
+        length: Length,
+    ) -> Self: ...
+    #
+    @classmethod
+    def full(
+        cls,
         keys: Iterable[Key] | Callable[[int], Key],
         fill_value: Value | Callable[[Key], Value],
+        *,
+        length: Length | None = None,
     ) -> Self:
         """
         Create a TypedDict of ``length`` items.
 
         Args:
-            length: number of items
             keys: iterable of keys OR key factory (index -> key)
             fill_value: value OR value factory (key -> value)
+            length: number of items (optional if keys is an iterable)
         """
+
+        if length is not None and length < 0:
+            raise ValueError(f"Length must be non-negative, got {length}")
 
         # Generate keys
         if callable(keys):
+            if length is None:
+                raise TypeError(
+                    "Length must be provided when keys is a callable (index -> key)"
+                )
             key_list = [keys(index) for index in range(length)]
         else:
             key_list = list(keys)
-            if len(key_list) != length:
-                raise LengthError(f"Expected {length} keys, got {len(key_list)}")
+            if length is None:
+                length = cast(Length, len(key_list))
+            elif len(key_list) != length:
+                raise LengthError(
+                    f"Expected {length} keys, got {len(key_list)}: {key_list!r}"
+                )
 
         # Generate values
         if callable(fill_value):
             data = {key: cast(Value, fill_value(key)) for key in key_list}
         else:
-            data = {key: cast(Value, copy.deepcopy(fill_value)) for key in key_list}
+            if isinstance(fill_value, IMMUTABLES):
+                data = {key: cast(Value, fill_value) for key in key_list}
+            else:
+                data = {key: cast(Value, copy.deepcopy(fill_value)) for key in key_list}
 
         return cls(data)
