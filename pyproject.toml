@@ -18,7 +18,7 @@ lint = ["ruff>=0.15.6"]
 typecheck = [
     "basedpyright>=1.38.3",
     "mypy[mypyc]>=1.19.1",
-    "pyrefly>=0.57.0",
+    "pyrefly>=0.57.1",
     "pyright>=1.1.408",
     "ty>=0.0.23",
 ]
