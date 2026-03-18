@@ -1,6 +1,6 @@
 [project]
 name = "typingkit"
-version = "0.2.7"
+version = "0.2.8"
 description = "Python strong typing suite, along with Typed NumPy: Static shape typing and runtime shape validation."
 readme = "README.md"
 authors = [{ name = "Ashrith Sagar", email = "ashrith9sagar@gmail.com" }]
