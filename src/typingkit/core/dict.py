@@ -5,9 +5,11 @@ A dict subclass with runtime length enforcement.
 """
 # src/typingkit/core/dict.py
 
+import copy
+from collections.abc import Iterable
 from dataclasses import dataclass
 from types import GenericAlias
-from typing import Any, TypeVar, cast
+from typing import Any, Callable, Self, TypeVar, cast
 
 from typingkit.core._options import RuntimeOptions
 from typingkit.core._validators import LengthError, validate_length
@@ -70,3 +72,35 @@ class TypedDict(
     @property
     def length(self) -> Length:
         return self.__len__()
+
+    @classmethod
+    def full(
+        cls,
+        length: Length,
+        keys: Iterable[Key] | Callable[[int], Key],
+        fill_value: Value | Callable[[Key], Value],
+    ) -> Self:
+        """
+        Create a TypedDict of ``length`` items.
+
+        Args:
+            length: number of items
+            keys: iterable of keys OR key factory (index -> key)
+            fill_value: value OR value factory (key -> value)
+        """
+
+        # Generate keys
+        if callable(keys):
+            key_list = [keys(index) for index in range(length)]
+        else:
+            key_list = list(keys)
+            if len(key_list) != length:
+                raise LengthError(f"Expected {length} keys, got {len(key_list)}")
+
+        # Generate values
+        if callable(fill_value):
+            data = {key: cast(Value, fill_value(key)) for key in key_list}
+        else:
+            data = {key: cast(Value, copy.deepcopy(fill_value)) for key in key_list}
+
+        return cls(data)

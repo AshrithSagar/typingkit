@@ -122,9 +122,18 @@ class TypedList(
 
     @classmethod
     def full(cls, length: Length, fill_value: Item | Callable[[int], Item]) -> Self:
-        """Create a TypedList of ``length`` elements filled by value or factory."""
+        """
+        Create a TypedList of ``length`` elements filled by value or factory.
+
+        Args:
+            length: number of items
+            fill_value: value OR value factory (index -> value)
+        """
+
+        # Generate values
         if callable(fill_value):
-            data: list[Item] = [cast(Item, fill_value(i)) for i in range(length)]
+            data = [cast(Item, fill_value(index)) for index in range(length)]
         else:
-            data = [copy.deepcopy(fill_value) for _ in range(length)]
+            data = [cast(Item, copy.deepcopy(fill_value)) for _ in range(length)]
+
         return cls(data)
