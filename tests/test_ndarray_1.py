@@ -3,9 +3,9 @@ Tests for TypedNDArray core functionality - 1
 """
 # tests/test_ndarray_1.py
 
-# pyright: reportPrivateUsage = false
 # pyright: reportGeneralTypeIssues = false
 # pyright: reportInvalidTypeArguments = false
+# pyright: reportPrivateUsage = false
 
 from typing import TypeVar
 

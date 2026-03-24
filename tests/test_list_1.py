@@ -3,8 +3,8 @@ Tests for TypedList core functionality - 1
 """
 # tests/test_list_1.py
 
+# pyright: reportArgumentType = false
 # pyright: reportGeneralTypeIssues = false
-# pyright: reportInvalidTypeArguments = false
 
 from typing import Literal, TypeVar
 

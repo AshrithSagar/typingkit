@@ -4,9 +4,11 @@ Unit tests for the core reduction logic in the plugin.
 # tests/mypy_plugin/test_mypy_plugin_logic.py
 
 # mypy: disable-error-code="attr-defined"
-# pyright: reportAttributeAccessIssue = false
-# pyright: reportOptionalMemberAccess = false
 # pyright: reportArgumentType = false
+# pyright: reportAttributeAccessIssue = false
+# pyright: reportImplicitOverride = false
+# pyright: reportOptionalMemberAccess = false
+# pyright: reportUnannotatedClassAttribute = false
 
 import importlib.util
 import pathlib

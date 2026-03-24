@@ -7,7 +7,7 @@ Shape factory for TypedNDArray
 # pyright: reportPrivateUsage = false
 
 from types import GenericAlias
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, TypeVar, override
 
 import numpy as np
 import numpy.typing as npt
@@ -20,11 +20,11 @@ _NewScalarT = TypeVar("_NewScalarT", bound=np.generic)
 
 
 class _ShapeBuilder(Generic[_ShapeT, _ScalarT]):
-    __slots__ = ("_shape_spec", "_dtype_spec")
+    __slots__: tuple[str, ...] = ("_shape_spec", "_dtype_spec")
 
     def __init__(self, shape_spec: GenericAlias, dtype_spec: GenericAlias):
-        self._shape_spec = shape_spec
-        self._dtype_spec = dtype_spec
+        self._shape_spec: GenericAlias = shape_spec
+        self._dtype_spec: GenericAlias = dtype_spec
 
     def dtype(self, dtype: type[_NewScalarT]) -> "_ShapeBuilder[_ShapeT, _NewScalarT]":
         return _ShapeBuilder(self._shape_spec, GenericAlias(np.dtype, (dtype,)))
@@ -34,8 +34,9 @@ class _ShapeBuilder(Generic[_ShapeT, _ScalarT]):
     ) -> TypedNDArray[_ShapeT, np.dtype[_ScalarT]]:
         dtype = self._dtype_spec.__args__[0]
         dtype = None if dtype is Any else dtype
-        return TypedNDArray[self._shape_spec](object, dtype)  # type: ignore
+        return TypedNDArray[self._shape_spec](object, dtype)  # type: ignore  # pyright: ignore[reportReturnType, reportInvalidTypeArguments]
 
+    @override
     def __repr__(self) -> str:
         return f"TypedNDArrayFactory[{self._shape_spec.__args__}, {self._dtype_spec.__args__[0]}]"
 
@@ -57,7 +58,7 @@ class _ShapeBuilder(Generic[_ShapeT, _ScalarT]):
 class _ShapeFactory:
     def __getitem__(self, dims: _ShapeT) -> _ShapeBuilder[_ShapeT, Any]:
         if not isinstance(dims, tuple):  # pyright: ignore[reportUnnecessaryIsInstance]
-            dims = (dims,)
+            dims = (dims,)  # pyright: ignore[reportUnreachable]
 
         shape_spec = GenericAlias(tuple, dims)
         dtype_spec = GenericAlias(np.dtype, (Any,))

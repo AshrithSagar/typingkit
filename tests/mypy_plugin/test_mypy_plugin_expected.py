@@ -7,7 +7,6 @@ Without the plugin, all of these would show the opaque DimExpr alias.
 """
 # tests/mypy_plugin/test_mypy_plugin_expected.py
 
-# pyright: reportGeneralTypeIssues = false
 # pyright: reportUnboundVariable = false
 # ruff: noqa: F821
 

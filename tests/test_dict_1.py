@@ -4,7 +4,6 @@ Tests for TypedDict core functionality - 1
 # tests/test_dict_1.py
 
 # pyright: reportGeneralTypeIssues = false
-# pyright: reportInvalidTypeArguments = false
 
 from typing import Literal, TypeVar
 

@@ -23,6 +23,12 @@ typecheck = [
     "ty>=0.0.24",
 ]
 
+[tool.basedpyright]
+reportAny = false
+reportExplicitAny = false
+reportUnusedCallResult = false
+reportUnusedParameter = false
+
 [tool.mypy]
 enable_incomplete_feature = ["TypeForm"]
 plugins = ["typingkit.mypy_plugin"]

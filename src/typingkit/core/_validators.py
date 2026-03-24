@@ -94,7 +94,7 @@ def validate_length(obj: Sized, length: Any) -> None:
 
     if isinstance(constraint, frozenset):
         if actual not in constraint:
-            allowed = ", ".join(str(val) for val in sorted(constraint))  # pyright: ignore[reportUnknownArgumentType, reportUnknownVariableType]
+            allowed = ", ".join(str(val) for val in sorted(constraint))  # pyright: ignore[reportUnknownArgumentType, reportUnknownVariableType, reportArgumentType]
             raise LengthError(
                 f"Length mismatch: expected one of {{{allowed}}}, got {actual}"
             )

@@ -47,7 +47,7 @@ async-safe (backed by a ``ContextVar``).
 
 from __future__ import annotations
 
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -155,11 +155,11 @@ class RuntimeOptions:
 class _RuntimeOptionsScopedCtx:
     """Returned by ``RuntimeOptions.scoped()``; not part of the public API."""
 
-    __slots__ = ("_overrides", "_token")
+    __slots__: tuple[str, ...] = ("_overrides", "_token")
 
     def __init__(self, overrides: dict[str, Any]) -> None:
-        self._overrides = overrides
-        self._token = None
+        self._overrides: dict[str, Any] = overrides
+        self._token: Token[RuntimeOptions | None] | None = None
 
     def __enter__(self) -> RuntimeOptions:
         current = _scoped_options.get() or RuntimeOptions()

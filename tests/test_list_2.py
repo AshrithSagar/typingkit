@@ -3,6 +3,7 @@ Extended Tests for TypedList - 2
 """
 # tests/test_list_2.py
 
+# pyright: reportArgumentType = false
 # pyright: reportGeneralTypeIssues = false
 # pyright: reportInvalidTypeArguments = false
 

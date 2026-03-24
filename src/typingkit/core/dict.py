@@ -9,7 +9,7 @@ import copy
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from types import GenericAlias
-from typing import Any, Self, TypeVar, cast, overload
+from typing import Any, Self, TypeVar, cast, overload, override
 
 from typingkit.core._options import RuntimeOptions
 from typingkit.core._validators import LengthError, validate_length
@@ -50,6 +50,7 @@ class TypedDict(
         TypedDict[int, str, int]({"a": 1})                 # unconstrained length
     """
 
+    @override
     def __runtime_generic_validate__(self, alias: GenericAlias) -> None:
         # get_runtime_args always returns a full-length tuple (defaults filled).
         # Safe to unpack directly against the class's parameter list.
@@ -68,6 +69,7 @@ class TypedDict(
             mapping_from_alias(alias, type(self))
         )
 
+    @override
     def __len__(self) -> Length:
         return cast(Length, super().__len__())
 

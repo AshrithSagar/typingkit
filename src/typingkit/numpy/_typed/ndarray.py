@@ -40,12 +40,11 @@ subsequent ``__array_finalize__`` calls from slicing / further views see
 # pyright: reportPrivateUsage = false
 
 import builtins
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from types import GenericAlias, UnionType
 from typing import (
     Any,
-    Iterator,
     Literal,
     NoReturn,
     Protocol,
@@ -57,6 +56,7 @@ from typing import (
     get_args,
     get_origin,
     overload,
+    override,
 )
 from typing import Literal as L
 
@@ -256,9 +256,9 @@ def _validate_shape(expected: _AnyShape, actual: _Shape) -> None:
                 prev_index, prev_value = bindings[exp]
                 if prev_value != act:
                     raise ShapeError(
-                        f"Inconsistent dimensions.\n"
-                        f"Found Dimension {prev_index} to be {prev_value} and Dimension {idx} to be {act}"
-                        f" but both were constrained to the same TypeVar {exp}."
+                        "Inconsistent dimensions.\n"
+                        + f"Found Dimension {prev_index} to be {prev_value} and Dimension {idx} to be {act}"
+                        + f" but both were constrained to the same TypeVar {exp}."
                     )
             else:
                 bindings[exp] = (idx, act)
@@ -294,14 +294,14 @@ def _validate_shape_against_contexts(shape_spec: _AnyShape, actual: _Shape) -> N
         if expected_dim is not None and actual_dim != expected_dim:
             raise ShapeError(
                 f"TypeVar {dim} mismatch at dimension {idx}: "
-                f"expected {expected_dim}, got {actual_dim}"
+                + f"expected {expected_dim}, got {actual_dim}"
             )
         # Consistency check
         if dim in typevar_bindings:
             if actual_dim != typevar_bindings[dim]:
                 raise ShapeError(
                     f"TypeVar {dim} inconsistent: dimension {idx} is {actual_dim}, "
-                    f"but previous occurrence required {typevar_bindings[dim]}"
+                    + f"but previous occurrence required {typevar_bindings[dim]}"
                 )
         else:
             typevar_bindings[dim] = actual_dim
@@ -344,6 +344,7 @@ class TypedNDArray(
 
     # ── RuntimeGeneric hooks ──────────────────────────────────────────────────
 
+    @override
     def __runtime_generic_iter_children__(
         self, mapping: dict[Any, Any]
     ) -> Iterable[tuple[Any, Any]]:
@@ -365,6 +366,7 @@ class TypedNDArray(
         for elem in self:
             yield elem, item_type
 
+    @override
     def __runtime_generic_validate__(self, alias: GenericAlias) -> None:
         """
         Validate shape and dtype against the specialised alias.
@@ -399,7 +401,7 @@ class TypedNDArray(
     # Without HKTs, this is really difficult to type in the general case.
     # It is recommended to override `__new__` when subclassing, to whatever typed precision one wants.
     @overload
-    def __new__(  # type: ignore[misc]
+    def __new__(  # type: ignore[misc]  # pyright: ignore[reportOverlappingOverload]
         cls,
         object: np._ArrayT,
         dtype: None = None,
@@ -463,7 +465,7 @@ class TypedNDArray(
     # [FIXME]: Can we skip this method? It just uses
     #   `np.asarray(object, dtype=dtype).view(cls)`
     #   all of which are regular `numpy`.
-    def __new__(  # type: ignore[misc]
+    def __new__(  # type: ignore[misc]  # pyright: ignore[reportInconsistentOverload]
         cls,
         object: npt.ArrayLike,
         dtype: npt.DTypeLike | None = None,
@@ -493,6 +495,7 @@ class TypedNDArray(
         obj = cast(Self, obj)  # pyright: ignore[reportUnnecessaryCast]  # pyrefly: ignore [redundant-cast]
         return obj
 
+    @override
     def __array_finalize__(self, obj: npt.NDArray[Any] | None, /) -> None:
         """
         numpy post-construction hook — bridge to ``RuntimeGeneric`` validation.
@@ -516,6 +519,7 @@ class TypedNDArray(
 
     # ── numpy API ─────────────────────────────────────────────────────────────
 
+    @override
     def __repr__(self) -> str:
         return str(np.asarray(self).__repr__())
 
@@ -537,13 +541,14 @@ class TypedNDArray(
     # So we just allow the following ~unsafely typed overload, which is just complained here
     # and shouldn't affect when using `__iter__` in downstream code, hopefully.
     def __iter__(
-        self: "TypedNDArray[tuple[int, *_ShapeRest], _DTypeT_co]",  # type: ignore[type-var]  # ty: ignore[unused-ignore-comment]
+        self: "TypedNDArray[tuple[int, *_ShapeRest], _DTypeT_co]",  # type: ignore[type-var]  # pyright: ignore[reportInvalidTypeArguments]
         /,
-    ) -> Iterator["TypedNDArray[tuple[*_ShapeRest], _DTypeT_co]"]: ...  # type: ignore[type-var]  # ty: ignore[unused-ignore-comment]
+    ) -> Iterator["TypedNDArray[tuple[*_ShapeRest], _DTypeT_co]"]: ...  # type: ignore[type-var]  # pyright: ignore[reportInvalidTypeArguments]
     @overload  # ?-d
     # Not required, but can keep as a fallback
     def __iter__(self, /) -> Iterator[Any]: ...  # pyright: ignore[reportOverlappingOverload]
     #
+    @override
     def __iter__(self, /) -> Iterator[Any]:  # pyright: ignore[reportIncompatibleMethodOverride]
         return super().__iter__()
 
@@ -566,6 +571,7 @@ class TypedNDArray(
         copy: builtins.bool | np._CopyMode = ...,
     ) -> "TypedNDArray[_ShapeT_co, np.dtype]": ...
     #
+    @override
     def astype(
         self,
         dtype: npt_.DTypeLike | None,
@@ -573,15 +579,16 @@ class TypedNDArray(
         casting: np._CastingKind = "unsafe",
         subok: builtins.bool = True,
         copy: builtins.bool | np._CopyMode = True,
-    ):
-        return super().astype(
+    ) -> "TypedNDArray[_ShapeT_co, np.dtype]":
+        return super().astype(  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
             dtype=dtype, order=order, casting=casting, subok=subok, copy=copy
         )
 
+    @override
     def flatten(
         self, /, order: np._OrderKACF = "C"
     ) -> "TypedNDArray[tuple[int], _DTypeT_co]":
-        return super().flatten(order=order)  # type: ignore[return-value]
+        return super().flatten(order=order)  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
 
     @overload  # type: ignore
     def __getitem__(
@@ -589,31 +596,32 @@ class TypedNDArray(
     ) -> _ScalarT_co: ...
     @overload
     def __getitem__(
-        self: "TypedNDArray[tuple[int, *_ShapeRest], _DTypeT_co]",  # type: ignore[type-var]  # ty: ignore[unused-ignore-comment]
+        self: "TypedNDArray[tuple[int, *_ShapeRest], _DTypeT_co]",  # type: ignore[type-var]  # pyright: ignore[reportInvalidTypeArguments]
         key: int,
-    ) -> "TypedNDArray[tuple[*_ShapeRest], _DTypeT_co]": ...  # type: ignore[type-var]  # ty: ignore[unused-ignore-comment]
+    ) -> "TypedNDArray[tuple[*_ShapeRest], _DTypeT_co]": ...  # type: ignore[type-var]  # pyright: ignore[reportInvalidTypeArguments]
     @overload
     def __getitem__(
-        self: "TypedNDArray[tuple[int, *_ShapeRest], _DTypeT_co]",  # type: ignore[type-var]  # ty: ignore[unused-ignore-comment]
+        self: "TypedNDArray[tuple[int, *_ShapeRest], _DTypeT_co]",  # type: ignore[type-var]  # pyright: ignore[reportInvalidTypeArguments]
         key: slice,
-    ) -> "TypedNDArray[tuple[int, *_ShapeRest], _DTypeT_co]": ...  # type: ignore[type-var]  # ty: ignore[unused-ignore-comment]
+    ) -> "TypedNDArray[tuple[int, *_ShapeRest], _DTypeT_co]": ...  # type: ignore[type-var]  # pyright: ignore[reportInvalidTypeArguments]
     @overload
     def __getitem__(
-        self: "TypedNDArray[tuple[int, *_ShapeRest], np.dtype[_ScalarT_co]]",  # type: ignore[type-var]  # ty: ignore[unused-ignore-comment]
+        self: "TypedNDArray[tuple[int, *_ShapeRest], np.dtype[_ScalarT_co]]",  # type: ignore[type-var]  # pyright: ignore[reportInvalidTypeArguments]
         key: tuple[int, *_ShapeRest],
     ) -> _ScalarT_co: ...
     @overload
     def __getitem__(
-        self: "TypedNDArray[tuple[int, int, *_ShapeRest], _DTypeT_co]",  # type: ignore[type-var]  # ty: ignore[unused-ignore-comment]
+        self: "TypedNDArray[tuple[int, int, *_ShapeRest], _DTypeT_co]",  # type: ignore[type-var]  # pyright: ignore[reportInvalidTypeArguments]
         key: tuple[int, slice],
-    ) -> "TypedNDArray[tuple[int, *_ShapeRest], _DTypeT_co]": ...  # type: ignore[type-var]  # ty: ignore[unused-ignore-comment]
+    ) -> "TypedNDArray[tuple[int, *_ShapeRest], _DTypeT_co]": ...  # type: ignore[type-var]  # pyright: ignore[reportInvalidTypeArguments]
     @overload
     def __getitem__(
-        self: "TypedNDArray[tuple[int, int, int, *_ShapeRest], _DTypeT_co]",  # type: ignore[type-var]  # ty: ignore[unused-ignore-comment]
+        self: "TypedNDArray[tuple[int, int, int, *_ShapeRest], _DTypeT_co]",  # type: ignore[type-var]  # pyright: ignore[reportInvalidTypeArguments]
         key: tuple[int, int],
-    ) -> "TypedNDArray[tuple[int, *_ShapeRest], _DTypeT_co]": ...  # type: ignore[type-var]  # ty: ignore[unused-ignore-comment]
+    ) -> "TypedNDArray[tuple[int, *_ShapeRest], _DTypeT_co]": ...  # type: ignore[type-var]  # pyright: ignore[reportInvalidTypeArguments]
     @overload
     def __getitem__(self, key: Any) -> Any: ...
     #
+    @override
     def __getitem__(self, key: Any) -> Any:  # pyright: ignore[reportIncompatibleMethodOverride]
         return super().__getitem__(key)  # pyright: ignore[reportUnknownVariableType]

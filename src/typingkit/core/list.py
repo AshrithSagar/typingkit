@@ -10,7 +10,7 @@ import numbers
 from collections.abc import Iterable
 from dataclasses import dataclass
 from types import GenericAlias
-from typing import Any, Callable, Self, TypeVar, cast, get_origin
+from typing import Any, Callable, Self, TypeVar, cast, get_origin, override
 
 from typingkit.core._options import RuntimeOptions
 from typingkit.core._validators import LengthError, validate_length
@@ -65,7 +65,7 @@ def _validate_items(items: Iterable[Any], item_type: Any) -> None:
         if not _is_assignable(item, item_type):
             raise ItemError(
                 f"Item at index {index}: expected {item_type.__name__!r},"
-                f" got {type(item).__name__!r}"
+                + f" got {type(item).__name__!r}"
             )
 
 
@@ -83,6 +83,7 @@ class TypedList(
         TypedList[int]([1, 2, 3])               # element type only
     """
 
+    @override
     def __runtime_generic_iter_children__(
         self, mapping: dict[Any, Any]
     ) -> Iterable[tuple[Any, Any]]:
@@ -90,6 +91,7 @@ class TypedList(
         for elem in self:
             yield elem, item_type
 
+    @override
     def __runtime_generic_validate__(self, alias: GenericAlias) -> None:
         # get_runtime_args always returns a full-length tuple (defaults filled).
         # Safe to unpack directly against the class's parameter list.
@@ -110,9 +112,11 @@ class TypedList(
             mapping_from_alias(alias, type(self))
         )
 
+    @override
     def __len__(self) -> Length:
         return cast(Length, super().__len__())
 
+    @override
     def copy(self) -> Self:
         return type(self)(super().copy())
 

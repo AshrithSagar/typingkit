@@ -18,7 +18,7 @@ Reduction rules
 from __future__ import annotations
 
 import math
-from typing import Callable
+from typing import Callable, override
 
 from mypy.nodes import TypeInfo
 from mypy.plugin import AnalyzeTypeContext, Plugin
@@ -308,7 +308,7 @@ def _make_dimexpr_hook(
 
         # Analyze each arg: converts UnboundType/RawExpressionType →
         # LiteralType / Instance / TypeVarType.
-        analyzed_args: list[Type] = [ctx.api.anal_type(a) for a in raw_args]  # type: ignore[attr-defined]
+        analyzed_args: list[Type] = [ctx.api.anal_type(a) for a in raw_args]  # type: ignore[attr-defined]  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue]
 
         # After analysis, args should be clean. If not, return a bare Instance
         # rather than letting unresolvable types leak into the type map.
@@ -359,6 +359,7 @@ class TypingKitPlugin(Plugin):
       (Add, Mul, Neg, Pow, Sub, Cubed, Squared, Log, and user-defined subclasses)
     """
 
+    @override
     def get_type_analyze_hook(
         self, fullname: str
     ) -> Callable[[AnalyzeTypeContext], Type] | None:

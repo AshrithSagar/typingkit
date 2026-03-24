@@ -102,9 +102,9 @@ def _validate_and_bind(
                 )
                 raise DimensionError(
                     f"In {func_name}(...), {location} "
-                    f"dimension {dim_idx} [{dim}] "
-                    f"expected {expected_dim} ({level}-level binding), "
-                    f"got {actual_dim}"
+                    + f"dimension {dim_idx} [{dim}] "
+                    + f"expected {expected_dim} ({level}-level binding), "
+                    + f"got {actual_dim}"
                 )
         else:
             context[dim] = actual_dim

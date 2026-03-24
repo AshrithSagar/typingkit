@@ -6,16 +6,20 @@ upto edge cases, multiple generic bases, iter_children adversarial, TypeVar cons
 # tests/test_generics_3.py
 
 # mypy: disable-error-code="annotation-unchecked"
-# pyright: reportPrivateUsage = false
+# pyright: reportArgumentType = false
 # pyright: reportGeneralTypeIssues = false
+# pyright: reportImplicitOverride = false
 # pyright: reportInvalidTypeArguments = false
-# pyright: reportUnknownVariableType = false
+# pyright: reportMissingSuperCall = false
+# pyright: reportPrivateUsage = false
+# pyright: reportUnannotatedClassAttribute = false
+# pyright: reportUnsafeMultipleInheritance = false
 
 import threading
 from collections.abc import Iterable
 from dataclasses import dataclass
 from types import GenericAlias
-from typing import Any, Generic, Optional, TypeVar, TypeVarTuple, get_args
+from typing import Any, Generic, TypeVar, TypeVarTuple, get_args
 
 from typingkit.core.generics import (
     RuntimeGeneric,
@@ -250,7 +254,7 @@ class TestConcurrency:
             except Exception as exc:
                 errors.append(exc)
 
-        threads = [threading.Thread(target=run, args=(tp,)) for tp in type_map]  # pyright: ignore[reportUnknownArgumentType]
+        threads = [threading.Thread(target=run, args=(tp,)) for tp in type_map]
         for t in threads:
             t.start()
         for t in threads:
@@ -454,7 +458,7 @@ class TestDataclassComplexFields:
 
         @dataclass
         class MaybeBox(RuntimeGeneric[T]):
-            value: Optional[T] = None
+            value: T | None = None
 
         obj = MaybeBox[int](value=None)
         assert obj.value is None

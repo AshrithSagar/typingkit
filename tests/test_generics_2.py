@@ -5,9 +5,11 @@ Extended coverage: dataclasses, propagation, substitution, mapping, MRO, aliases
 # tests/test_generics_2.py
 
 # mypy: disable-error-code="annotation-unchecked"
-# pyright: reportPrivateUsage = false
 # pyright: reportGeneralTypeIssues = false
+# pyright: reportImplicitOverride = false
 # pyright: reportInvalidTypeArguments = false
+# pyright: reportPrivateUsage = false
+# pyright: reportUnannotatedClassAttribute = false
 # pyright: reportUnknownVariableType = false
 
 from collections.abc import Iterable

@@ -3,7 +3,6 @@ Tests for RuntimeGeneric core functionality - 1
 """
 # tests/test_generics_1.py
 
-# pyright: reportPrivateUsage = false
 # pyright: reportGeneralTypeIssues = false
 # pyright: reportInvalidTypeArguments = false
 # pyright: reportUnknownVariableType = false

@@ -14,7 +14,7 @@ def diagnostic(obj: object | TypeForm[Any], pfx: str | None = None) -> Tree:
     _pfx = f"[bold cyan]{pfx}[/] " if pfx else ""
     tree = Tree(
         f"{_pfx}[yellow]obj[/]=[green]{obj!r}[/], "
-        f"[yellow]type[/]=[magenta]{type(obj).__name__}[/]"
+        + f"[yellow]type[/]=[magenta]{type(obj).__name__}[/]"
     )
     match obj:
         case tuple():

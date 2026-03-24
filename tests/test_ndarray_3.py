@@ -3,6 +3,7 @@ Extended Tests for TypedNDArray - 3
 """
 # tests/test_ndarray_3.py
 
+# pyright: reportArgumentType = false
 # pyright: reportGeneralTypeIssues = false
 # pyright: reportInvalidTypeArguments = false
 

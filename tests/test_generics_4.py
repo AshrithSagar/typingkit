@@ -14,8 +14,12 @@ Covers:
 # tests/test_generics_4.py
 
 # mypy: disable-error-code="annotation-unchecked"
+# pyright: reportArgumentType = false
+# pyright: reportAttributeAccessIssue = false
+# pyright: reportImplicitOverride = false
+# pyright: reportMissingSuperCall = false
 # pyright: reportPrivateUsage = false
-# pyright: reportGeneralTypeIssues = false
+# pyright: reportUnannotatedClassAttribute = false
 
 import asyncio
 from dataclasses import dataclass
@@ -99,7 +103,7 @@ class TestRuntimeOptions:
             resolved = RuntimeOptions.resolve(opts)
             assert resolved.validate is False
             # domain_flag should be untouched — it's not in base RuntimeOptions
-            assert resolved.domain_flag is True  # type: ignore[attr-defined]
+            assert resolved.domain_flag is True  # type: ignore[attr-defined]  # pyright: ignore[reportUnknownMemberType]
 
 
 # ── RuntimeOptions.scoped ─────────────────────────────────────────────────────

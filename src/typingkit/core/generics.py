@@ -51,6 +51,7 @@ from typing import (
     get_origin,
     get_type_hints,
     overload,
+    override,
 )
 
 from typing_extensions import TypeForm
@@ -99,12 +100,12 @@ class _RuntimeValidatedDescriptor:
     ``np.ndarray`` base classes. Reads return ``False`` until the flag is set.
     """
 
-    __slots__ = ()
+    __slots__: tuple[str, ...] = ()
     _KEY: str = "__runtime_validated__"
 
     def __get__(self, obj: Any, objtype: type | None = None) -> bool:
         if obj is None:
-            return self  # type: ignore[return-value]
+            return self  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
         val = obj.__dict__.get(self._KEY, _NOT_SET)
         return val is not _NOT_SET and bool(val)
 
@@ -430,7 +431,7 @@ class RuntimeGeneric(Generic[Unpack[Ts]]):
             ...
     """
 
-    _runtime_validated = _RuntimeValidatedDescriptor()
+    _runtime_validated: _RuntimeValidatedDescriptor = _RuntimeValidatedDescriptor()
     _runtime_options_: RuntimeOptions = global_default_runtime_options
 
     def __init_subclass__(
@@ -556,7 +557,7 @@ class _RuntimeGenericAlias(GenericAlias):
         if not has_tvt and len(args_tuple) > len(params):
             raise TypeError(
                 f"Too many arguments for {origin.__name__}: "
-                f"got {len(args_tuple)}, expected {len(params)}"
+                + f"got {len(args_tuple)}, expected {len(params)}"
             )
         return inst
 
@@ -564,6 +565,7 @@ class _RuntimeGenericAlias(GenericAlias):
     def from_generic_alias(cls, alias: GenericAlias) -> Self:
         return cls(get_origin(alias), get_args(alias))
 
+    @override
     def __getitem__(self, typeargs: Any) -> Self:
         """Support progressive binding: ``MyClass[T][int]`` -> ``MyClass[int]``."""
         return type(self).from_generic_alias(super().__getitem__(typeargs))
@@ -573,13 +575,13 @@ class _RuntimeGenericAlias(GenericAlias):
 
         opts = RuntimeOptions.resolve(_get_class_options(origin))
         if not opts.validate:
-            return super().__call__(*args, **kwargs)  # type: ignore[misc]
+            return super().__call__(*args, **kwargs)  # type: ignore[misc]  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType, reportAttributeAccessIssue]
 
         mapping = mapping_from_alias(self, origin)
         typevar_token = _runtime_typevar_ctx.set(mapping)
         alias_token = _runtime_alias_ctx.set(self)  # type: ignore[arg-type]
         try:
-            obj: RuntimeGeneric[Unpack[Ts]] = super().__call__(*args, **kwargs)  # type: ignore[misc, valid-type]
+            obj: RuntimeGeneric[Unpack[Ts]] = super().__call__(*args, **kwargs)  # type: ignore[misc, valid-type]  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType, reportAttributeAccessIssue, reportGeneralTypeIssues]
             obj.__runtime_generic_post_init__(self)  # pyright: ignore[reportUnknownMemberType]
         finally:
             _runtime_typevar_ctx.reset(typevar_token)
@@ -712,7 +714,7 @@ def resolve_runtime_annotation(
         resolve_runtime_annotation(T, Box[int]())        # int
     """
     if isinstance(tp, RuntimeGeneric):
-        tp = type(tp)  # type: ignore[assignment]
+        tp = type(tp)  # type: ignore[assignment]  # pyright: ignore[reportUnknownArgumentType, reportUnknownVariableType]
     return _substitute(annotation, get_runtime_mapping(tp))  # pyright: ignore[reportUnknownArgumentType]
 
 

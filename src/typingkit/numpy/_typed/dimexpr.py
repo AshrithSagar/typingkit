@@ -10,11 +10,11 @@ from typing import (
     Generic,
     Literal,
     NoReturn,
-    TypeAlias,
     TypeAliasType,
     TypeVar,
     get_args,
     get_origin,
+    override,
 )
 
 Arg1 = TypeVar("Arg1", bound=int)
@@ -34,12 +34,14 @@ class DimExpr(int):
 
 
 class UnaryOp(Generic[Arg1], DimExpr):
+    @override
     @classmethod
     def expr(cls, args: tuple[Arg1], /) -> int:
         raise NotImplementedError
 
 
 class BinaryOp(Generic[Arg1, Arg2], DimExpr):
+    @override
     @classmethod
     def expr(cls, args: tuple[Arg1, Arg2], /) -> int:
         raise NotImplementedError
@@ -49,24 +51,28 @@ class BinaryOp(Generic[Arg1, Arg2], DimExpr):
 
 
 class Neg(UnaryOp[Arg1]):
+    @override
     @classmethod
     def expr(cls, args: tuple[Arg1], /) -> int:
         return -args[0]
 
 
 class Add(BinaryOp[Arg1, Arg2]):
+    @override
     @classmethod
     def expr(cls, args: tuple[Arg1, Arg2], /) -> int:
         return args[0] + args[1]
 
 
 class Mul(BinaryOp[Arg1, Arg2]):
+    @override
     @classmethod
     def expr(cls, args: tuple[Arg1, Arg2], /) -> int:
         return args[0] * args[1]
 
 
 class Pow(BinaryOp[Arg1, Arg2]):
+    @override
     @classmethod
     def expr(cls, args: tuple[Arg1, Arg2], /) -> int:
         return args[0] ** args[1]
@@ -94,12 +100,14 @@ class Squared(Mul[Arg1, Arg1]): ...
 # Custom operations
 # Can also directly define with a `expr`, with some custom logic, say
 class Cubed(UnaryOp[Arg1]):
+    @override
     @classmethod
     def expr(cls, args: tuple[Arg1], /) -> int:
         return args[0] ** 3
 
 
 class Log(BinaryOp[Arg1, Arg2]):
+    @override
     @classmethod
     def expr(cls, args: tuple[Arg1, Arg2], /) -> int:
         x = math.log(args[0], args[1])
