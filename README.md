@@ -56,23 +56,31 @@ uv add git+https://github.com/AshrithSagar/typingkit.git@main
 ## Usage
 
 ```python
-from typing import TypeVar
+from typing import Literal, TypeAlias, TypeVar
 
-from typingkit._typed.ndarray import TypedNDArray
+import numpy as np
+from typingkit.numpy import TypedNDArray as NDArray
 
-# Shape variables are just regular TypeVar's
+# Shape variables are just regular TypeVars
 N = TypeVar("N", bound=int, default=int)
 M = TypeVar("M", bound=int, default=int)
 
 # Create aliases such as these, or use TypedNDArray directly
-Vector = TypedNDArray[tuple[N]]
-Matrix = TypedNDArray[tuple[M, N]]
+Vector: TypeAlias = NDArray[tuple[N], np.dtype[Any]]
+Matrix: TypeAlias = NDArray[tuple[M, N], np.dtype[Any]]
 
 v1 = Vector([1, 2, 3])  # Passes
 v2 = Vector([4, 5, 6, 7])  # Also passes
 
-v3 = TypedNDArray[tuple[int]]([[8, 9]])
+v3 = NDArray[tuple[int]]([[8, 9]])
 # Fails, since expected 1D array but passed in a 2D array
+
+# Literal types also work
+v4 = Vector[Literal[3]]([1, 2, 3])  # Passes
+v5 = Vector[Literal[3]]([4, 5, 6, 7])  # Fails
+
+v6 = Vector[Literal[3, 4]]([4, 5, 6, 7])  # Passes
+# Allowed shapes are either (3,) or (4,)
 ```
 
 See [USAGE.md](USAGE.md) for more details.
