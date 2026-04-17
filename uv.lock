@@ -583,7 +583,7 @@ requires-dist = [{ name = "numpy", specifier = ">=2.2" }]
 
 [package.metadata.requires-dev]
 dev = [{ name = "rich", specifier = ">=15.0.0" }]
-lint = [{ name = "ruff", specifier = ">=0.15.10" }]
+lint = [{ name = "ruff", specifier = ">=0.15.11" }]
 test = [
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-memray", specifier = ">=1.8.0" },

@@ -14,7 +14,7 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = ["rich>=15.0.0"]
 test = ["pytest>=9.0.3", "pytest-memray>=1.8.0"]
-lint = ["ruff>=0.15.10"]
+lint = ["ruff>=0.15.11"]
 typecheck = [
     "basedpyright>=1.39.2",
     "mypy[mypyc]>=1.20.1",
