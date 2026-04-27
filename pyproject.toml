@@ -22,7 +22,7 @@ typecheck = [
     "pyrefly>=0.62.0",
     "pyright>=1.1.409",
     "ty>=0.0.32",
-    "zuban>=0.7.0",
+    "zuban>=0.7.1",
 ]
 
 [tool.basedpyright]
