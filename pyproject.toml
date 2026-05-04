@@ -8,7 +8,7 @@ authors = [{ name = "Ashrith Sagar", email = "ashrith9sagar@gmail.com" }]
 dependencies = ["numpy>=2.2"]
 
 [build-system]
-requires = ["uv_build>=0.11.7,<0.12.0"]
+requires = ["uv_build>=0.11.8,<0.12.0"]
 build-backend = "uv_build"
 
 [dependency-groups]
@@ -22,7 +22,7 @@ typecheck = [
     "pyrefly>=0.63.1",
     "pyright>=1.1.409",
     "ty>=0.0.34",
-    "zuban>=0.7.1",
+    "zuban>=0.7.2",
 ]
 
 [tool.basedpyright]
