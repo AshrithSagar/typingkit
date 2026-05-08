@@ -12,6 +12,7 @@ from typingkit.core._options import (
 from typingkit.core.dict import TypedDict
 from typingkit.core.generics import RuntimeGeneric
 from typingkit.core.list import TypedList
+from typingkit.core.mapping import TypedMapping
 
 __all__ = [
     "RuntimeGeneric",
@@ -20,4 +21,5 @@ __all__ = [
     "reset_global_default_runtime_options",
     "TypedList",
     "TypedDict",
+    "TypedMapping",
 ]
