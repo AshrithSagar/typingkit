@@ -13,6 +13,7 @@ from typingkit.core.dict import TypedDict
 from typingkit.core.generics import RuntimeGeneric
 from typingkit.core.list import TypedList
 from typingkit.core.mapping import TypedMapping
+from typingkit.core.sequence import TypedSequence
 
 __all__ = [
     "RuntimeGeneric",
@@ -22,4 +23,5 @@ __all__ = [
     "TypedList",
     "TypedDict",
     "TypedMapping",
+    "TypedSequence",
 ]
