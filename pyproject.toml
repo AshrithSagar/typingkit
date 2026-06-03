@@ -20,9 +20,9 @@ typecheck = [
     "mypy[mypyc]>=2.1.0",
     "pycroscope>=0.4.0",
     "pyrefly>=1.0.0",
-    "pyright>=1.1.409",
-    "ty>=0.0.41",
-    "zuban>=0.7.2",
+    "pyright>=1.1.410",
+    "ty>=0.0.42",
+    "zuban>=0.8.0",
 ]
 
 [tool.basedpyright]
