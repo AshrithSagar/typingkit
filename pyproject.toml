@@ -16,13 +16,13 @@ dev = ["rich>=15.0.0"]
 lint = ["ruff>=0.15.16"]
 test = ["pytest>=9.0.3", "pytest-memray>=1.8.0"]
 typecheck = [
-    "basedpyright>=1.39.6",
+    "basedpyright>=1.39.7",
     "mypy[mypyc]>=2.1.0",
     "pycroscope>=0.4.0",
     "pyrefly>=1.0.0",
     "pyright>=1.1.410",
-    "ty>=0.0.44",
-    "zuban>=0.8.0",
+    "ty>=0.0.46",
+    "zuban>=0.8.2",
 ]
 
 [tool.basedpyright]
