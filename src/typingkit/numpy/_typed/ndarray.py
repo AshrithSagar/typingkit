@@ -401,9 +401,9 @@ class TypedNDArray(
     # Without HKTs, this is really difficult to type in the general case.
     # It is recommended to override `__new__` when subclassing, to whatever typed precision one wants.
     @overload
-    def __new__(  # type: ignore[misc]  # pyright: ignore[reportOverlappingOverload]
+    def __new__[ArrayT: np.ndarray](  # type: ignore[misc]  # pyright: ignore[reportOverlappingOverload]
         cls,
-        object: np._ArrayT,
+        object: ArrayT,
         dtype: None = None,
         *,
         copy: bool | np._CopyMode | None = True,
@@ -411,11 +411,11 @@ class TypedNDArray(
         subok: L[True],
         ndmin: int = 0,
         like: npt_._SupportsArrayFunc | None = None,
-    ) -> np._ArrayT: ...
+    ) -> ArrayT: ...
     @overload
-    def __new__(  # type: ignore[misc]
+    def __new__[ArrayT: np.ndarray](  # type: ignore[misc]
         cls,
-        object: _SupportsArray[np._ArrayT],
+        object: _SupportsArray[ArrayT],
         dtype: None = None,
         *,
         copy: bool | np._CopyMode | None = True,
@@ -423,11 +423,11 @@ class TypedNDArray(
         subok: L[True],
         ndmin: L[0] = 0,
         like: npt_._SupportsArrayFunc | None = None,
-    ) -> np._ArrayT: ...
+    ) -> ArrayT: ...
     @overload
-    def __new__(
+    def __new__[ScalarT: np.generic](
         cls,
-        object: npt_._ArrayLike[np._ScalarT],
+        object: npt_._ArrayLike[ScalarT],
         dtype: None = None,
         *,
         copy: bool | np._CopyMode | None = True,
@@ -435,20 +435,20 @@ class TypedNDArray(
         subok: bool = False,
         ndmin: int = 0,
         like: npt_._SupportsArrayFunc | None = None,
-    ) -> "TypedNDArray[_ShapeT_co, np.dtype[np._ScalarT]]": ...
+    ) -> "TypedNDArray[_ShapeT_co, np.dtype[ScalarT]]": ...
     @overload
     # NOTE: This is prolly the best we can do without HKTs
-    def __new__(
+    def __new__[ScalarT: np.generic](
         cls,
         object: Any,
-        dtype: npt_._DTypeLike[np._ScalarT],
+        dtype: npt_._DTypeLike[ScalarT],
         *,
         copy: bool | np._CopyMode | None = True,
         order: np._OrderKACF = "K",
         subok: bool = False,
         ndmin: int = 0,
         like: npt_._SupportsArrayFunc | None = None,
-    ) -> "TypedNDArray[_ShapeT_co, np.dtype[np._ScalarT]]": ...
+    ) -> "TypedNDArray[_ShapeT_co, np.dtype[ScalarT]]": ...
     @overload
     def __new__(
         cls,
@@ -553,14 +553,14 @@ class TypedNDArray(
         return super().__iter__()
 
     @overload
-    def astype(
+    def astype[ScalarT: np.generic](
         self,
-        dtype: npt_._DTypeLike[np._ScalarT],
+        dtype: npt_._DTypeLike[ScalarT],
         order: np._OrderKACF = ...,
         casting: np._CastingKind = ...,
         subok: builtins.bool = ...,
         copy: builtins.bool | np._CopyMode = ...,
-    ) -> "TypedNDArray[_ShapeT_co, np.dtype[np._ScalarT]]": ...
+    ) -> "TypedNDArray[_ShapeT_co, np.dtype[ScalarT]]": ...
     @overload
     def astype(
         self,
